@@ -2,9 +2,9 @@
 staging-settings:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
-      url: https://sepolia.gateway.tenderly.co
+      url: https://ethereum-sepolia-rpc.publicnode.com
 
 production-settings:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
-      url: https://sepolia.gateway.tenderly.co
+      url: https://ethereum-sepolia-rpc.publicnode.com

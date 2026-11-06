@@ -57,7 +57,12 @@ async function arm(content: Parameters<typeof createSeal>[0]["content"], rule: a
   const d: SealDraft = out.draft;
   if (out.needsSwarmUpload) {
     const up = await fetch(BASE + "/api/swarm/upload", { method: "POST", headers: { "content-type": "application/octet-stream" }, body: out.ciphertext as unknown as BodyInit });
-    d.swarmRef = (await up.json()).reference;
+    const uj = await up.json().catch(() => null);
+    if (!up.ok || !uj?.reference) {
+      check(`swarm upload for ${d.sealId}`, false, `${up.status} ${JSON.stringify(uj)}`);
+      return d;
+    }
+    d.swarmRef = uj.reference;
   }
   const r = await post("/api/seals", { draft: d, proof: proof("owner", ownerSignal("arm", d.sealId, now(), draftDigest(d))) });
   check(`arm ${d.sealId} (${rule.kind}/${audience}/${d.contentType})`, r.status === 200, r.status === 200 ? `tx ${r.json.txHash.slice(0, 12)}…` : JSON.stringify(r.json));
@@ -95,7 +100,7 @@ while (now() < deadline) {
     final.set(D.sealId, st[D.sealId]);
     break;
   }
-  await sleep(5000);
+  await sleep(Number(process.env.E2E_POLL_MS ?? 5000));
 }
 console.log();
 
@@ -125,7 +130,7 @@ const kUS = await post("/api/reader/key", { sealId: B.sealId, token: tokUS });
 check("B: US reader refused", kUS.status === 403 && kUS.json?.error === "not_in_country", `${kUS.status} ${kUS.json?.error}`);
 const kIN = await post("/api/reader/key", { sealId: B.sealId, token: tokIN });
 check("B: IN reader gets the key", kIN.status === 200 && !!kIN.json?.keyB64, `${kIN.status}`);
-if (kIN.json?.keyB64) {
+if (kIN.json?.keyB64 && sb) {
   const ct = new Uint8Array(await (await fetch(`${cfg.swarmGateway}/bytes/${sb.seal.swarmRef}`)).arrayBuffer());
   const env = openSeal({ sealId: B.sealId, key: fromBase64(kIN.json.keyB64), ciphertext: ct, contentHash: sb.seal.contentHash });
   check("B decrypts byte-identical for IN reader", Buffer.compare(Buffer.from(env.body), Buffer.from(fileA)) === 0);

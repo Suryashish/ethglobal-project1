@@ -41,7 +41,7 @@ export async function mockVerify(page: Page, opts: { identity: "author" | "thief
   await dlg.locator("label.iigs-w-opt", { hasText: opts.identity === "author" ? "Author (you)" : "Someone else" }).click();
   if (opts.nationality) await dlg.locator("select.iigs-w-sel").selectOption(opts.nationality);
   await dlg.locator("button.iigs-w-btn[data-primary='1']").click();
-  if (opts.expectClose !== false) await dlg.waitFor({ state: "detached", timeout: 30_000 });
+  if (opts.expectClose !== false) await dlg.waitFor({ state: "detached", timeout: 120_000 });
 }
 
 /** Fills /vault/new and arms. Returns sealId. */
@@ -64,7 +64,7 @@ export async function createSeal(page: Page, o: {
   await page.getByRole("button", { name: "Encrypt and continue" }).click();
   await page.getByRole("button", { name: "Arm with World ID" }).click();
   await mockVerify(page, { identity: "author" });
-  await page.waitForURL(/\/s\/[a-z0-9]{16}/, { timeout: 60_000 });
+  await page.waitForURL(/\/s\/[a-z0-9]{16}/, { timeout: 120_000 });
   return new URL(page.url()).pathname.split("/").pop()!;
 }
 

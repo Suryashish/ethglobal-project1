@@ -61,7 +61,9 @@ integration debrief: [`WORLD_FEEDBACK.md`](WORLD_FEEDBACK.md).
 ## Sponsor evidence
 **Chainlink CRE** — workflow: [`workflows/release-sweeper/workflow/main.ts`](workflows/release-sweeper/workflow/main.ts) · consumer:
 [`contract/src/SilentRelease.sol`](contract/src/SilentRelease.sol) (IReceiver, forwarder-gated, idempotent) · Sepolia contract:
-`TBD after deploy` · release tx: `TBD` · simulate: `cd workflows/release-sweeper && cre workflow simulate ./workflow -T staging-settings --non-interactive --trigger-index 0 --broadcast`.
+[`0x10dcBC473111666cBd14A4557A9B5AD5b4d7397B`](https://sepolia.etherscan.io/address/0x10dcBC473111666cBd14A4557A9B5AD5b4d7397B)
+(forwarder = CRE MockKeystoneForwarder `0x15fC6ae953E024d975e77382eEeC56A9101f9F88`) · first CRE release tx (3 seals, via
+`cre workflow simulate --broadcast`): [`0x45755733…ed72`](https://sepolia.etherscan.io/tx/0x45755733f12997d4c7017a4312cb0610b5dd70c7bc19115f91b649e6a5e7ed72) · simulate: `cd workflows/release-sweeper && cre workflow simulate ./workflow -T staging-settings --non-interactive --trigger-index 0 --broadcast`.
 
 **Arkiv** — writer addresses: VERIFIER `0xF87fC983a8D75c67cdF4E0f80b1507a74A21fBD8` (seal / checkin / disarm), MIRROR
 `0x9b95d050D551C8836578f32d92508467E7dA1638` (release). Example query:

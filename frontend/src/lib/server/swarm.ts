@@ -9,16 +9,23 @@ export const batchId = () => optional("SWARM_BATCH_ID", "0".repeat(64));
 export const REF_RE = /^[0-9a-f]{64}$/;
 
 /** Plain (unencrypted) upload of OUR ciphertext. Returns the 64-hex reference. */
-export async function uploadToSwarm(bytes: Uint8Array): Promise<string> {
-  const bee = new Bee(beeUrl());
-  try {
-    // bee-js 13: bee.data.upload(batch, data) -> { reference }
-    const res = await bee.data.upload(batchId(), bytes);
-    return res.reference.toHex();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new ApiError(502, "swarm_upload_failed", `Swarm upload failed: ${msg.slice(0, 240)}`);
+export async function uploadToSwarm(bytes: Uint8Array, maxAttempts = 3): Promise<string> {
+  // 60 s per attempt: the public gateway can be slow on poor networks.
+  const bee = new Bee(beeUrl(), { timeout: 60_000 });
+  let last = "";
+  // Retrying is safe: Swarm is content-addressed, so the same bytes always give the same reference.
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      // bee-js 13: bee.data.upload(batch, data) -> { reference }
+      const res = await bee.data.upload(batchId(), bytes);
+      return res.reference.toHex();
+    } catch (e) {
+      last = e instanceof Error ? e.message : String(e);
+      console.error(`[swarm] upload failed (attempt ${attempt}/${maxAttempts}): ${last.slice(0, 200)}`);
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
   }
+  throw new ApiError(502, "swarm_upload_failed", `Swarm upload failed: ${last.slice(0, 240)}`);
 }
 
 export async function downloadFromSwarm(ref: string): Promise<Response> {

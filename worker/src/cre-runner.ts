@@ -20,8 +20,10 @@ export function buildArgs(c: CreConfig): string[] {
   ];
 }
 
-export type LineKind = "login" | "highlight" | "plain";
+export type LineKind = "login" | "network" | "highlight" | "plain";
 export function classifyLine(line: string): LineKind {
+  // A DNS/timeout failure while validating credentials is a network problem, not a missing login.
+  if (/no such host|dial tcp|i\/o timeout|context deadline exceeded|connection (reset|refused)|TLS handshake/i.test(line)) return "network";
   if (/not logged in|please (run )?.*cre login|login required|unauthorized.*login|authentication required/i.test(line)) return "login";
   if (/releas|0x[0-9a-fA-F]{64}|tx ?hash|transaction/i.test(line)) return "highlight";
   return "plain";
@@ -66,11 +68,14 @@ async function main() {
     const started = Date.now();
     L.info("── simulation run start ──");
     let sawLogin = false;
+    let sawNetwork = false;
     const r = await runOnce(cfg, (kind, line) => {
       if (kind === "login") sawLogin = true;
+      if (kind === "network") sawNetwork = true;
       L.info(kind === "highlight" ? `>>> ${line}` : `    ${line}`);
     });
-    if (sawLogin) L.error("CRE CLI is not logged in. Run: ~/.cre/bin/cre login (interactive) or set CRE_API_KEY, then restart this runner.");
+    if (sawNetwork) L.warn("network error (DNS/timeout) — not a code problem; the next run retries automatically.");
+    else if (sawLogin) L.error("CRE CLI is not logged in. Run: ~/.cre/bin/cre login (interactive) or set CRE_API_KEY, then restart this runner.");
     L.info(`── run finished: ${r.timedOut ? "TIMED OUT (killed)" : `exit ${r.code}`} in ${((Date.now() - started) / 1000).toFixed(1)}s ──`);
     await sleep(Math.max(1000, cfg.intervalSec * 1000 - (Date.now() - started)));
   }
