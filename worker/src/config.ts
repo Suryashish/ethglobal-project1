@@ -154,8 +154,8 @@ export function loadCreConfig(env: Env = loadRawEnv(), home = process.env.HOME ?
   const r = new Reader(env);
   const cfg: CreConfig = {
     bin: r.str("CRE_BIN", `${home}/.cre/bin/cre`),
-    projectDir: resolve(r.str("CRE_PROJECT_DIR", resolve(REPO_ROOT, "workflows"))),
-    workflowPath: r.str("CRE_WORKFLOW_PATH", "./release-sweeper"),
+    projectDir: resolve(r.str("CRE_PROJECT_DIR", resolve(REPO_ROOT, "workflows", "release-sweeper"))),
+    workflowPath: r.str("CRE_WORKFLOW_PATH", "./workflow"),
     target: r.str("CRE_TARGET", "staging-settings"),
     triggerIndex: r.int("CRE_TRIGGER_INDEX", 0),
     intervalSec: r.int("CRE_INTERVAL_SEC", 30, 5),

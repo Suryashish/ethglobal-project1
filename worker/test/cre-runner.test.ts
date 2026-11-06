@@ -7,7 +7,7 @@ describe("cre-runner", () => {
     const c = loadCreConfig({ CRE_PROJECT_DIR: "/x" }, "/home/u");
     expect(c.bin).toBe("/home/u/.cre/bin/cre");
     const a = buildArgs(c);
-    expect(a).toEqual(expect.arrayContaining(["workflow", "simulate", "./release-sweeper", "--broadcast", "--non-interactive", "--trigger-index", "0", "-T", "staging-settings"]));
+    expect(a).toEqual(expect.arrayContaining(["workflow", "simulate", "./workflow", "--broadcast", "--non-interactive", "--trigger-index", "0", "-T", "staging-settings"]));
   });
   it("classifies lines", () => {
     expect(classifyLine("Error: not logged in, run cre login")).toBe("login");

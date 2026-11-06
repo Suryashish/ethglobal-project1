@@ -1,0 +1,12 @@
+{
+  "schedule": "*/30 * * * * *",
+  "arkivRpcUrl": "https://rpc.rabdi.db-chain.testnet.arkiv.network",
+  "dep": "dev",
+  "verifierAddress": "0xF87fC983a8D75c67cdF4E0f80b1507a74A21fBD8",
+  "mirrorAddress": "0x9b95d050D551C8836578f32d92508467E7dA1638",
+  "consumerAddress": "0x0000000000000000000000000000000000000001",
+  "chainSelectorName": "ethereum-testnet-sepolia",
+  "gasLimit": "1000000",
+  "maxBatch": 10,
+  "maxPages": 5
+}

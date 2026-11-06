@@ -25,7 +25,7 @@ Loaded from `../.secrets/keys.env`, then `worker/.env` (overrides), then the pro
 - Chain: `CHAIN_RPC_URL` (default `SEPOLIA_RPC_URL` or publicnode Sepolia), `CHAIN_ID` (11155111), `SILENT_RELEASE_ADDRESS`.
 - mirror: `MIRROR_PRIVATE_KEY`, `START_BLOCK` (required unless CHAIN_ID=31337; set it to the deploy block), `MIRROR_POLL_MS` (6000).
 - dev-sweeper: `ESCROW_SECRET_KEY`, `SWEEPER_PRIVATE_KEY`, `SWEEP_INTERVAL_SEC` (30).
-- cre-runner: `CRE_BIN` (`~/.cre/bin/cre`), `CRE_PROJECT_DIR` (`<repo>/workflows`), `CRE_WORKFLOW_PATH` (`./release-sweeper`), `CRE_TARGET` (`staging-settings`), `CRE_TRIGGER_INDEX` (0), `CRE_INTERVAL_SEC`, `CRE_TIMEOUT_SEC`, `CRE_ENV_FILE`, `CRE_EXTRA_ARGS`. Auth: `cre login` or `CRE_API_KEY`.
+- cre-runner: `CRE_BIN` (`~/.cre/bin/cre`), `CRE_PROJECT_DIR` (`<repo>/workflows/release-sweeper`), `CRE_WORKFLOW_PATH` (`./workflow`), `CRE_TARGET` (`staging-settings`), `CRE_TRIGGER_INDEX` (0), `CRE_INTERVAL_SEC`, `CRE_TIMEOUT_SEC`, `CRE_ENV_FILE`, `CRE_EXTRA_ARGS`. Auth: `cre login` or `CRE_API_KEY`.
 
 ## Trust model
 The contract is the source of truth for releases. The mirror is a convenience copy into Arkiv and is **replaceable: anyone can run it** (readers filter Arkiv by the MIRROR address, but the same data is in the Sepolia event log). The dev-sweeper is a local stand-in for the CRE DON and is **not** a trust-minimised release path.
