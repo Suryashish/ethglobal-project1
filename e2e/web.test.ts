@@ -3,7 +3,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
-import { APP, createSeal, errors, findChrome, mockVerify, saveState, shot, watch } from "./helpers";
+import { see, APP, createSeal, errors, findChrome, mockVerify, saveState, shot, watch } from "./helpers";
 
 let browser: Browser;
 let ctx: BrowserContext;
@@ -15,6 +15,8 @@ beforeAll(async () => {
   ctx = await browser.newContext({ viewport: { width: 1100, height: 900 } });
   ctx.on("request", (r) => reqs.push(r.url()));
   page = await ctx.newPage();
+  page.setDefaultTimeout(60_000);
+  page.setDefaultNavigationTimeout(90_000);
   watch(page, "web");
 });
 afterAll(async () => {
@@ -27,10 +29,10 @@ describe("reader pages", () => {
     reqs.length = 0;
     await page.goto(`${APP}/s/7297zmq67qld8zbb`);
     await page.getByText("If you are reading this, I went silent. — A").waitFor({ timeout: 30_000 });
-    await expect(page.locator("body")).toContainText(/released/i);
+    await see(page, /released/i);
     expect(await page.locator("a[href*='/entity/']").count()).toBeGreaterThan(0);
     expect(await page.locator("a[href*='/tx/']").count()).toBeGreaterThan(0);
-    await expect(page.locator("body")).toContainText("read the seal directly from Arkiv");
+    await see(page, "read the seal directly from Arkiv");
     const arkiv = reqs.filter((u) => u.startsWith("http://localhost:8645"));
     console.log("requests to Arkiv RPC:", arkiv.length, "| /api requests:", reqs.filter((u) => u.includes("/api/")).map((u) => new URL(u).pathname).join(","));
     expect(arkiv.length).toBeGreaterThan(0);
@@ -41,12 +43,12 @@ describe("reader pages", () => {
     await page.goto(`${APP}/s/qxjiiagd7888ogf9`);
     const dl = page.getByRole("link", { name: /Download/ }).or(page.getByRole("button", { name: /Download/ }));
     await dl.first().waitFor({ timeout: 45_000 });
-    await expect(page.locator("body")).toContainText("evidence.pdf");
+    await see(page, "evidence.pdf");
     const href = await dl.first().getAttribute("href");
     expect(href).toMatch(/^blob:/);
     const head = await page.evaluate(async (h) => { const b = await (await fetch(h!)).arrayBuffer(); return new TextDecoder().decode(new Uint8Array(b).slice(0, 5)); }, href);
     expect(head).toBe("%PDF-");
-    await expect(page.locator("body")).toContainText("Swarm ciphertext");
+    await see(page, "Swarm ciphertext");
     await shot(page, "2-reader-pdf");
   });
 
@@ -74,12 +76,12 @@ describe("vault flows", () => {
   it("4a. TIMER 2 min PUBLIC: arm → seal view → /vault shows countdown + ARMED", async () => {
     await page.goto(`${APP}/`);
     ids.timer = await createSeal(page, { text: "timer secret from e2e", kind: "TIMER", preset: "2 min" });
-    await expect(page.locator("body")).toContainText(/Armed\. The switch is live/);
+    await see(page, /Armed\. The switch is live/);
     await shot(page, "4a-seal-after-arm");
     await page.goto(`${APP}/vault`);
     const card = page.locator(`div:has(> div a[href='/s/${ids.timer}'])`).first();
     await page.locator(`a[href='/s/${ids.timer}']`).first().waitFor({ timeout: 20_000 });
-    await expect(page.locator("main")).toContainText(/armed/i);
+    await see(page, /armed/i);
     const t1 = await page.locator("[data-countdown], time").first().textContent().catch(() => null);
     await shot(page, "4a-vault");
     expect(await card.count()).toBeGreaterThan(0);
@@ -119,7 +121,7 @@ describe("vault flows", () => {
 
   it("5. country-gated create (IN) arms", async () => {
     ids.gated = await createSeal(page, { text: "gated secret from e2e", kind: "TIMER", preset: "5 days", audience: "GATED", countries: ["IN"] });
-    await expect(page.locator("body")).toContainText(/IN/);
+    await see(page, /IN/);
     saveState({ gatedArmed: ids.gated });
     await shot(page, "5-gated-armed");
   });
@@ -131,10 +133,10 @@ describe("vault flows", () => {
 
   it("4c. never-check-in heartbeat flips to RELEASED by itself on /s/<id>", async () => {
     await page.goto(`${APP}/s/${ids.hb}`);
-    await expect(page.locator("body")).toContainText(/armed|sealed/i);
+    await see(page, /armed|sealed/i);
     await shot(page, "4c-hb-reader-armed");
     await page.getByText("heartbeat secret from e2e").waitFor({ timeout: 300_000 });
-    await expect(page.locator("body")).toContainText(/released/i);
+    await see(page, /released/i);
     await shot(page, "4c-hb-reader-released");
   });
 

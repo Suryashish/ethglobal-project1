@@ -56,11 +56,19 @@ export async function createSeal(page: Page, o: {
   await page.getByRole("button", { name: o.preset, exact: true }).first().click();
   if (o.audience === "GATED") {
     await page.locator("label", { hasText: "Verified readers from chosen countries" }).click();
-    for (const c of o.countries ?? ["IN"]) await page.locator(`button[title][aria-pressed]`, { hasText: c }).first().click();
+    for (const c of o.countries ?? ["IN"]) {
+      const b = page.locator(`button[title][aria-pressed]`, { hasText: c }).first(); // IN is preselected by default
+      if ((await b.getAttribute("aria-pressed")) !== "true") await b.click();
+    }
   }
   await page.getByRole("button", { name: "Encrypt and continue" }).click();
   await page.getByRole("button", { name: "Arm with World ID" }).click();
   await mockVerify(page, { identity: "author" });
   await page.waitForURL(/\/s\/[a-z0-9]{16}/, { timeout: 60_000 });
   return new URL(page.url()).pathname.split("/").pop()!;
+}
+
+/** Waits until the page body contains the text/regex. */
+export async function see(page: Page, t: string | RegExp, timeout = 30_000) {
+  await page.locator("body", { hasText: t }).waitFor({ timeout });
 }
