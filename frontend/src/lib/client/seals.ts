@@ -17,6 +17,7 @@ function arkivCfg(c: Partial<PublicConfig>): ArkivConfig {
     dep: c.dep ?? "dev",
     verifier: c.verifierAddress as `0x${string}`,
     mirror: c.mirrorAddress as `0x${string}`,
+    ...(c.arkivRpcUrl ? { rpcUrl: c.arkivRpcUrl } : {}),
   };
 }
 
@@ -25,7 +26,7 @@ export async function loadSealState(id: string): Promise<LoadedState> {
   let cfg: Partial<PublicConfig> | null = staticConfig();
   try {
     if (!cfg) cfg = await getConfig();
-    const state = await getSealState(arkivPublicClient({ accessKey: cfg.arkivAccessKey ?? "" }), arkivCfg(cfg), id, {
+    const state = await getSealState(arkivPublicClient(arkivCfg(cfg)), arkivCfg(cfg), id, {
       withInline: true,
     });
     return { state, via: "arkiv" };

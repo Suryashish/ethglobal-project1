@@ -8,6 +8,7 @@ export function publicConfig(): PublicConfig {
     dep: optional("NEXT_PUBLIC_IIGS_DEP", optional("IIGS_DEP", "dev")),
     baseUrl: optional("NEXT_PUBLIC_BASE_URL", "http://localhost:3000"),
     arkivAccessKey: optional("NEXT_PUBLIC_ARKIV_ACCESS_KEY", optional("ARKIV_ACCESS_KEY")),
+    arkivRpcUrl: optional("NEXT_PUBLIC_ARKIV_RPC_URL"),
     verifierAddress: verifierAddress(),
     mirrorAddress: required("NEXT_PUBLIC_MIRROR_ADDRESS"),
     escrowPublicKey: required("NEXT_PUBLIC_ESCROW_PUBLIC_KEY"),

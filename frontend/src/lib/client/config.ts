@@ -22,6 +22,7 @@ export function staticConfig(): Partial<PublicConfig> | null {
   return {
     dep: process.env.NEXT_PUBLIC_IIGS_DEP || "dev",
     arkivAccessKey: process.env.NEXT_PUBLIC_ARKIV_ACCESS_KEY || "",
+    arkivRpcUrl: process.env.NEXT_PUBLIC_ARKIV_RPC_URL || "",
     verifierAddress,
     mirrorAddress,
     swarmGateway: process.env.NEXT_PUBLIC_SWARM_GATEWAY || "https://api.gateway.ethswarm.org",

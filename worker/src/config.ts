@@ -48,8 +48,10 @@ class Reader {
     return v as Address;
   }
   key32(name: string): Hex {
-    const v = this.str(name);
-    if (v && !/^0x[0-9a-fA-F]{64}$/.test(v)) this.problems.push(`${name} is not a 0x… 32-byte hex value`);
+    const raw = this.str(name);
+    // Accept both "0x…" and bare hex (scripts/gen-keys.mjs writes X25519 keys without 0x).
+    const v = raw && !raw.startsWith("0x") ? `0x${raw}` : raw;
+    if (v && !/^0x[0-9a-fA-F]{64}$/.test(v)) this.problems.push(`${name} is not a 32-byte hex value`);
     return v as Hex;
   }
   int(name: string, def?: number, min = 0): number {

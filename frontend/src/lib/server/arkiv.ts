@@ -19,12 +19,15 @@ export function mirrorAddress(): Address {
   return required("NEXT_PUBLIC_MIRROR_ADDRESS", "address of the release mirror wallet") as Address;
 }
 
+const rpc = () => optional("ARKIV_RPC_URL", optional("NEXT_PUBLIC_ARKIV_RPC_URL"));
+
 export function arkivConfig(): ArkivConfig {
   return {
     accessKey: optional("ARKIV_ACCESS_KEY", optional("NEXT_PUBLIC_ARKIV_ACCESS_KEY")),
     dep: optional("IIGS_DEP", optional("NEXT_PUBLIC_IIGS_DEP", "dev")),
     verifier: verifierAddress(),
     mirror: mirrorAddress(),
+    ...(rpc() ? { rpcUrl: rpc() } : {}),
   };
 }
 
