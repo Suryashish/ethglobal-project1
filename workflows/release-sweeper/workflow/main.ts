@@ -30,7 +30,8 @@ import { buildItems, buildSnapshot, planSweep, type Snapshot } from "./src/sweep
 
 const configSchema = z.object({
   schedule: z.string(),
-  arkivRpcUrl: z.string().url(),
+  // Not z.string().url(): zod's url check needs the URL global, which the CRE (QuickJS) runtime lacks.
+  arkivRpcUrl: z.string().regex(/^https?:\/\/[^\s/]+(\/\S*)?$/),
   dep: z.string(),
   verifierAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
   mirrorAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
@@ -87,8 +88,23 @@ const fetchWrappedKeys = (req: HTTPSendRequester, cfg: Config, ids: string[]): s
   return JSON.stringify(out);
 };
 
-export const onCron = (runtime: Runtime<Config>): string => {
+/**
+ * The Arkiv access key is a CRE secret (ARKIV_ACCESS_KEY), appended as the last URL path segment the way
+ * the Arkiv SDK does it — so it never sits in the committed config. Missing secret → public endpoint.
+ */
+function withArkivKey(runtime: Runtime<Config>): Config {
   const cfg = runtime.config;
+  let key = "";
+  try {
+    key = runtime.getSecret({ id: "ARKIV_ACCESS_KEY" }).result().value.trim();
+  } catch {
+    key = "";
+  }
+  return key ? { ...cfg, arkivRpcUrl: `${cfg.arkivRpcUrl.replace(/\/+$/, "")}/${encodeURIComponent(key)}` } : cfg;
+}
+
+export const onCron = (runtime: Runtime<Config>): string => {
+  const cfg = withArkivKey(runtime);
   const now = Math.floor(runtime.now().getTime() / 1000);
   const http = new HTTPClient();
 

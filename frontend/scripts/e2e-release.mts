@@ -56,7 +56,7 @@ async function arm(content: Parameters<typeof createSeal>[0]["content"], rule: a
   });
   const d: SealDraft = out.draft;
   if (out.needsSwarmUpload) {
-    const up = await fetch(BASE + "/api/swarm/upload", { method: "POST", headers: { "content-type": "application/octet-stream" }, body: out.ciphertext });
+    const up = await fetch(BASE + "/api/swarm/upload", { method: "POST", headers: { "content-type": "application/octet-stream" }, body: out.ciphertext as unknown as BodyInit });
     d.swarmRef = (await up.json()).reference;
   }
   const r = await post("/api/seals", { draft: d, proof: proof("owner", ownerSignal("arm", d.sealId, now(), draftDigest(d))) });
@@ -69,18 +69,22 @@ const fileC = new TextEncoder().encode("%PDF-1.4 fake evidence " + "x".repeat(20
 const A = await arm({ type: "text", text: "If you are reading this, I went silent. — A" }, { kind: "HEARTBEAT", intervalSec: 60 }, "PUBLIC");
 const B = await arm({ type: "file", name: "leak.bin", mime: "application/octet-stream", bytes: fileA }, { kind: "TIMER", releaseAt: now() + 40 }, "GATED", ["IN"]);
 const C = await arm({ type: "file", name: "evidence.pdf", mime: "application/pdf", bytes: fileC }, { kind: "TIMER", releaseAt: now() + 45 }, "PUBLIC");
-const D = await arm({ type: "text", text: "I am fine — D" }, { kind: "HEARTBEAT", intervalSec: 60 }, "PUBLIC");
+// D's heartbeat needs margin for testnet write latency (3–8 s per check-in): use E2E_D_INTERVAL_SEC=120 on testnet.
+const D = await arm({ type: "text", text: "I am fine — D" }, { kind: "HEARTBEAT", intervalSec: Number(process.env.E2E_D_INTERVAL_SEC ?? 60) }, "PUBLIC");
 
 const ids = [A.sealId, B.sealId, C.sealId, D.sealId];
 const t0 = now();
-const deadline = t0 + 240;
+const deadline = t0 + Number(process.env.E2E_TIMEOUT_SEC ?? 240);
 let lastCheckin = now();
 const final = new Map<string, any>();
 while (now() < deadline) {
   // the author of D keeps checking in every ~25 s
-  if (now() - lastCheckin >= 25) {
+  if (now() - lastCheckin >= 20) {
     const r = await post(`/api/seals/${D.sealId}/checkin`, { proof: proof("owner", ownerSignal("checkin", D.sealId, now())) });
-    if (r.status !== 200) check("D check-in", false, JSON.stringify(r.json));
+    if (r.status !== 200) {
+      process.stdout.write("\n");
+      check(`D check-in at t+${now() - t0}s`, false, `${r.status} ${JSON.stringify(r.json)}`);
+    }
     lastCheckin = now();
   }
   const st = (await post("/api/seals/state", { ids })).json ?? {};

@@ -70,16 +70,40 @@ export async function mapArkivWriteError(
 }
 
 /** Runs an Arkiv write with error mapping. */
-export async function withArkivWrite<T>(fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (e) {
-    const address = verifierAddress();
-    throw await mapArkivWriteError(e, {
-      address,
-      getBalance: () => publicClient().getBalance({ address }),
-    });
-  }
+/**
+ * Errors that happen before a transaction is accepted, so retrying cannot double-write.
+ * ("nonce too low" / "already known" are NOT here: the tx may have landed.)
+ */
+const TRANSIENT_WRITE = /429|rate limit|too many requests|fetch failed|ECONNRESET|ETIMEDOUT|socket hang up|timed? ?out|502|503|504|bad gateway|service unavailable/i;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** All VERIFIER writes go through one queue: one signing key, so concurrent sends would race on nonces. */
+let writeQueue: Promise<unknown> = Promise.resolve();
+
+export async function withArkivWrite<T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+  const run = async (): Promise<T> => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await fn();
+      } catch (e) {
+        if (e instanceof ApiError) throw e;
+        const raw = e instanceof Error ? e.message : String(e);
+        console.error(`[arkiv] write failed (attempt ${attempt}/${maxAttempts}): ${raw.split("\n")[0]!.slice(0, 300)}`);
+        if (attempt < maxAttempts && TRANSIENT_WRITE.test(raw)) {
+          await sleep(400 * 2 ** attempt);
+          continue;
+        }
+        const address = verifierAddress();
+        throw await mapArkivWriteError(e, {
+          address,
+          getBalance: () => publicClient().getBalance({ address }),
+        });
+      }
+    }
+  };
+  const p = writeQueue.then(run, run);
+  writeQueue = p.catch(() => undefined);
+  return p;
 }
 
 export async function readArkiv<T>(fn: () => Promise<T>): Promise<T> {

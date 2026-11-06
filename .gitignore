@@ -18,3 +18,5 @@ workflows/**/*.wasm
 contract/lib/
 .local-stack/
 e2e/state.json
+scripts/testnet.env
+workflows/**/.cre_build_tmp.js

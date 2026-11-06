@@ -4,7 +4,10 @@ import { buildQuery, buildRequestBody, parseQueryResponse, SCHEMA, SELECT_ATTRS 
 import cfg from "../config/config.staging.json";
 
 async function rpc(body: string) {
-  const res = await fetch(cfg.arkivRpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body });
+  // Same as the workflow: the access key (env ARKIV_ACCESS_KEY, optional) is the last URL path segment.
+  const key = process.env.ARKIV_ACCESS_KEY?.trim();
+  const url = key ? `${cfg.arkivRpcUrl.replace(/\/+$/, "")}/${encodeURIComponent(key)}` : cfg.arkivRpcUrl;
+  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body });
   expect(res.ok).toBe(true);
   return res.json();
 }
