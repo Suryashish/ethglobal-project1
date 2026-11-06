@@ -15,3 +15,4 @@ workflows/**/node_modules/
 workflows/**/*.wasm
 .DS_Store
 .secrets/
+contract/lib/
