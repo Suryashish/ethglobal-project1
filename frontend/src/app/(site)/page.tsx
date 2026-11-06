@@ -1,6 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { FeedDemo } from "@/components/landing/FeedDemo";
+import { ReturningLink } from "@/components/landing/ReturningLink";
 import { SealedLetter } from "@/components/landing/SealedLetter";
 import { Logo, WaxSeal } from "@/components/Logo";
 import { buttonStyles } from "@/components/ui/Button";
@@ -63,7 +64,13 @@ export default function Home() {
               How it works
             </a>
           </div>
-          <p className="mt-6 text-[13px] text-faint">Free and open source. Running on Sepolia testnet.</p>
+          <p className="mt-7 text-[15px] text-muted">
+            Got a seal link, or a post that reads a little oddly?{" "}
+            <Link href="/open" className="font-medium text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg">
+              Open it here
+            </Link>
+            .
+          </p>
         </div>
         <div className="rise" style={{ animationDelay: "120ms" }}>
           <SealedLetter />
@@ -161,10 +168,10 @@ export default function Home() {
               Seal something <ArrowRight className="size-4" aria-hidden />
             </Link>
             <Link
-              href="/verify-reader"
+              href="/open"
               className={cn(buttonStyles({ variant: "ghost", size: "lg" }), "text-[#bdb4a5] hover:bg-white/10 hover:text-[#f5f0e6]")}
             >
-              I&apos;m a reader
+              Open a seal
             </Link>
           </div>
         </div>
@@ -173,10 +180,10 @@ export default function Home() {
       <footer>
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-5 py-10 text-sm text-muted sm:flex-row sm:px-8">
           <Logo />
-          <p className="text-faint">Built at ETHGlobal Mumbai 2026 with World ID, Arkiv, Chainlink CRE and Swarm.</p>
+          <p className="text-faint">Built at ETHGlobal Mumbai 2026 with World ID, Arkiv, Chainlink CRE and Swarm. Testnet only.</p>
           <nav className="flex gap-5" aria-label="Footer">
-            <Link className="hover:text-fg" href="/app">App</Link>
-            <Link className="hover:text-fg" href="/verify-reader">Readers</Link>
+            <Link className="hover:text-fg" href="/app">Your seals</Link>
+            <Link className="hover:text-fg" href="/open">Open a seal</Link>
           </nav>
         </div>
       </footer>
@@ -193,12 +200,13 @@ function LandingNav() {
           <a href="#how" className="hidden rounded-md px-3 py-1.5 text-muted transition-colors hover:text-fg sm:block">
             How it works
           </a>
-          <a href="#extension" className="hidden rounded-md px-3 py-1.5 text-muted transition-colors hover:text-fg sm:block">
+          <a href="#extension" className="hidden rounded-md px-3 py-1.5 text-muted transition-colors hover:text-fg md:block">
             Extension
           </a>
-          <Link href="/app" className={cn(buttonStyles({ variant: "secondary", size: "sm" }), "ml-3")}>
-            Open the app
+          <Link href="/open" className="hidden rounded-md px-3 py-1.5 text-muted transition-colors hover:text-fg sm:block">
+            Open a seal
           </Link>
+          <ReturningLink className="ml-3" />
         </nav>
       </div>
     </header>

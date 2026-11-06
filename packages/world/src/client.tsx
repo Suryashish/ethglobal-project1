@@ -69,20 +69,20 @@ const css = `
 .iigs-w-back{position:fixed;inset:0;background:rgba(42,36,27,.45);display:grid;place-items:center;z-index:2147483000;font-family:var(--font-plex-sans,ui-sans-serif),system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 .iigs-w-card{width:min(380px,92vw);background:#fbf8f2;color:#1d1b17;border:1px solid #e3dacb;border-radius:18px;padding:24px;box-shadow:0 24px 60px -20px rgba(40,30,15,.45)}
 .iigs-w-card h3{margin:0 0 4px;font-family:var(--font-newsreader,Georgia),Georgia,serif;font-size:24px;font-weight:400;line-height:1.15}
-.iigs-w-sub{margin:0 0 16px;font-size:13.5px;color:#6c655a;line-height:1.5}
-.iigs-w-tag{display:inline-block;font-size:12px;font-weight:500;color:#6c655a;background:#efe8db;border:1px solid #e3dacb;border-radius:6px;padding:2px 8px;margin-bottom:12px}
+.iigs-w-sub{margin:0 0 16px;font-size:13.5px;color:#5f584e;line-height:1.5}
+.iigs-w-tag{display:inline-block;font-size:12px;font-weight:500;color:#5f584e;background:#efe8db;border:1px solid #e3dacb;border-radius:6px;padding:2px 8px;margin-bottom:12px}
 .iigs-w-opt{display:flex;gap:10px;align-items:center;padding:11px 12px;margin:6px 0;border:1px solid #e3dacb;border-radius:9px;cursor:pointer;background:#fffdf9;font-size:14px}
 .iigs-w-opt[data-on="1"]{border-color:#1d1b17;box-shadow:0 0 0 1px #1d1b17}
 .iigs-w-opt input{accent-color:#1d1b17}
 .iigs-w-row{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
 .iigs-w-btn{border:1px solid #cec2ad;background:#fffdf9;color:#1d1b17;border-radius:9px;padding:9px 15px;font:inherit;font-size:14px;font-weight:500;cursor:pointer}
-.iigs-w-btn:hover{border-color:#998f80}
+.iigs-w-btn:hover{border-color:#776e61}
 .iigs-w-btn[data-primary="1"]{background:#1d1b17;border-color:#1d1b17;color:#fbf8f2}
 .iigs-w-btn[data-primary="1"]:hover{background:#3b3731}
 .iigs-w-btn:disabled{opacity:.5;cursor:default}
 .iigs-w-err{margin:10px 0 0;font-size:13px;color:#b3261e}
 .iigs-w-sel{width:100%;margin-top:6px;background:#fffdf9;color:#1d1b17;border:1px solid #e3dacb;border-radius:9px;padding:9px 10px;font:inherit;font-size:14px}
-.iigs-w-chk{display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px;color:#6c655a}
+.iigs-w-chk{display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px;color:#5f584e}
 .iigs-w-scan{display:grid;place-items:center;padding:14px 0 6px}
 .iigs-w-ring{width:120px;height:120px;border-radius:50%;border:2px solid #1d1b17;position:relative;overflow:hidden;background:radial-gradient(circle at 50% 38%,#e3dacb 0 28%,#efe8db 29%)}
 .iigs-w-ring::after{content:"";position:absolute;left:0;right:0;height:2px;background:#2e6a48;animation:iigs-w-scan 1.1s ease-in-out infinite alternate}
@@ -261,7 +261,7 @@ export function WorldVerifyButton(props: WorldVerifyButtonProps) {
                 </label>
               ))}
               {props.kind === "reader" ? (
-                <label style={{ display: "block", marginTop: 12, fontSize: 13, color: "#6c655a" }}>
+                <label style={{ display: "block", marginTop: 12, fontSize: 13, color: "#5f584e" }}>
                   Nationality
                   <select className="iigs-w-sel" value={nationality} onChange={(e) => setNationality(e.target.value)}>
                     {MOCK_NATIONALITIES.map((n) => <option key={n} value={n}>{n}</option>)}

@@ -26,3 +26,19 @@ export function effectiveStatus(state: SealState, nowSec: number): SealState["st
 export function deadlineLabel(rule: SealState["nextDeadlineRule"]): string {
   return rule === "HEARTBEAT" ? "Next check-in due in" : "Opens in";
 }
+
+/** A heartbeat seal whose check-in window is in its last quarter (or last minute). */
+export function needsCheckIn(state: SealState, nowSec: number): boolean {
+  if (state.status !== "ARMED" || state.nextDeadlineRule !== "HEARTBEAT" || !state.nextDeadline || nowSec === 0) return false;
+  const left = state.nextDeadline - nowSec;
+  return left > 0 && left <= Math.max(60, state.seal.intervalSec * 0.25);
+}
+
+/** Dashboard order: what needs you soonest first, then live seals, then finished ones (newest first). */
+export function byUrgency(a: SealState, b: SealState): number {
+  const rank = (s: SealState) => (s.status === "ARMED" || s.status === "RELEASING" ? 0 : s.status === "RELEASED" ? 1 : 2);
+  const r = rank(a) - rank(b);
+  if (r !== 0) return r;
+  if (rank(a) === 0) return (a.nextDeadline ?? Infinity) - (b.nextDeadline ?? Infinity);
+  return b.seal.createdAt - a.seal.createdAt;
+}

@@ -1,13 +1,15 @@
 "use client";
 import type { SealState } from "@iigs/core";
-import { Plus, ShieldCheck } from "lucide-react";
+import { BellRing, Plus, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { LogoMark } from "@/components/Logo";
 import { SealCard } from "@/components/SealCard";
 import { buttonStyles } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { useNowSec } from "@/lib/client/hooks";
 import { getLocalSeals, getOwner, loadOwnerSeals, loadSealStatesViaApi } from "@/lib/client/seals";
+import { byUrgency, needsCheckIn } from "@/lib/rules";
 
 export function Vault() {
   const [seals, setSeals] = useState<SealState[] | null>(null);
@@ -23,7 +25,7 @@ export function Vault() {
       ]);
       const map = new Map<string, SealState>();
       for (const s of [...byOwner, ...Object.values(byId)]) map.set(s.seal.sealId, s);
-      setSeals([...map.values()].sort((a, b) => b.seal.createdAt - a.seal.createdAt));
+      setSeals([...map.values()].sort(byUrgency));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -38,6 +40,8 @@ export function Vault() {
   }, [refresh]);
 
   const count = (st: SealState["status"]) => seals?.filter((s) => s.status === st).length ?? 0;
+  const now = useNowSec(15_000);
+  const due = seals?.filter((s) => needsCheckIn(s, now)) ?? [];
 
   return (
     <div className="space-y-10">
@@ -67,6 +71,17 @@ export function Vault() {
         ) : null}
       </header>
 
+      {due.length ? (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-sealed/30 bg-sealed-soft px-4 py-3 text-sm text-sealed">
+          <BellRing className="size-4 shrink-0" aria-hidden />
+          <span className="flex-1">
+            {due.length === 1
+              ? `“${due[0]!.seal.title || "Untitled seal"}” needs a check-in soon. Tap I'm OK on it below.`
+              : `${due.length} seals need a check-in soon. They're at the top.`}
+          </span>
+        </div>
+      ) : null}
+
       {error ? (
         <p role="alert" className="rounded-xl border border-danger/25 bg-danger/[0.05] px-4 py-3 text-sm text-danger">
           Could not load seals: {error}
@@ -83,7 +98,9 @@ export function Vault() {
         <Card className="flex flex-col items-center px-6 py-16 text-center">
           <LogoMark className="size-14" />
           <p className="mt-6 font-serif text-[28px] leading-tight">Nothing sealed on this device yet.</p>
-          <p className="mt-2 max-w-sm text-sm text-muted">Seal evidence or a post, and it appears here with a live countdown.</p>
+          <p className="mt-2 max-w-sm text-sm text-muted">
+            Seal evidence or a post, and it appears here with a live countdown. Seals made on another browser stay there.
+          </p>
           <Link href="/app/new" className={buttonStyles({ variant: "primary", size: "md", className: "mt-8" })}>
             <Plus className="size-4" aria-hidden /> Seal something
           </Link>
@@ -95,6 +112,10 @@ export function Vault() {
           ))}
         </div>
       )}
+
+      <p className="text-[13px] text-faint">
+        Your seals are remembered by this browser. Arm them from the device you&apos;ll keep with you, and don&apos;t clear its site data.
+      </p>
     </div>
   );
 }

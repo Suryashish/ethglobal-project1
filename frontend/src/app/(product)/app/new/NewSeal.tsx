@@ -12,7 +12,7 @@ import { Card, StepTitle } from "@/components/ui/Card";
 import { errorMessage } from "@/lib/client/api";
 import { getConfig } from "@/lib/client/config";
 import { cn } from "@/lib/cn";
-import { formatBytes } from "@/lib/format";
+import { flag, formatBytes, humanInterval } from "@/lib/format";
 
 type Kind = "TIMER" | "HEARTBEAT" | "BOTH";
 const KINDS: { id: Kind; icon: LucideIcon; title: string; blurb: string }[] = [
@@ -30,8 +30,8 @@ export function NewSeal() {
   const [dragging, setDragging] = useState(false);
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState<Kind>("HEARTBEAT");
-  const [timerSec, setTimerSec] = useState(300);
-  const [hbSec, setHbSec] = useState(120);
+  const [timerSec, setTimerSec] = useState(86400);
+  const [hbSec, setHbSec] = useState(86400);
   const [audience, setAudience] = useState<"PUBLIC" | "GATED">("PUBLIC");
   const [countries, setCountries] = useState<string[]>(["IN"]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -48,6 +48,22 @@ export function NewSeal() {
 
   const contentReady = mode === "text" ? text.trim().length > 0 : file !== null;
   const gatedReady = audience === "PUBLIC" || countries.length > 0;
+  const canContinue = contentReady && gatedReady && busy === null;
+
+  // The whole rule in one plain sentence, so a wrong choice is caught before the face check.
+  const when =
+    kind === "TIMER"
+      ? `It opens in ${humanInterval(timerSec)}, unless you disarm it first.`
+      : kind === "HEARTBEAT"
+        ? `It opens if you don't check in for ${humanInterval(hbSec)}.`
+        : `It opens in ${humanInterval(timerSec)}, or sooner if you don't check in for ${humanInterval(hbSec)}.`;
+  const who =
+    audience === "PUBLIC"
+      ? "Anyone can read it once it opens."
+      : countries.length
+        ? `Only verified readers from ${countries.map((c) => `${flag(c)} ${c}`).join(", ")} can read it.`
+        : "Pick at least one country above.";
+  const blocker = !contentReady ? "Add some text or a file first." : !gatedReady ? "Pick at least one country for your readers." : null;
 
   async function prepare() {
     setBusy("Encrypting on this device…");
@@ -160,6 +176,12 @@ export function NewSeal() {
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canContinue) {
+                  e.preventDefault();
+                  void prepare();
+                }
+              }}
               rows={7}
               placeholder="What do you want sealed?"
               className="w-full resize-y rounded-xl border border-line bg-field p-4 font-serif text-[18px] leading-relaxed transition-colors placeholder:text-faint"
@@ -250,16 +272,22 @@ export function NewSeal() {
         {audience === "GATED" ? <CountryPicker value={countries} onChange={setCountries} /> : null}
       </Card>
 
-      <div className="flex flex-col items-stretch gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="flex items-center gap-2 text-[13px] text-muted">
-          <KeyRound className="size-3.5" aria-hidden />
-          {!contentReady ? "Add some text or a file first." : "Encrypted on this device with XChaCha20-Poly1305."}
+      <Card className="border-line-strong">
+        <h2 className="text-sm font-medium text-muted">In plain words</h2>
+        <p className="mt-2 font-serif text-[21px] leading-snug text-fg" aria-live="polite">
+          {when} {who}
         </p>
-        <Button variant="primary" size="lg" disabled={!contentReady || !gatedReady || busy !== null} onClick={prepare}>
-          <Lock className="size-4" aria-hidden />
-          {busy ?? "Encrypt and continue"}
-        </Button>
-      </div>
+        <div className="mt-5 flex flex-col-reverse items-stretch gap-3 border-t border-line pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-center gap-2 text-[13px] text-muted">
+            <KeyRound className="size-3.5 shrink-0" aria-hidden />
+            {blocker ?? "Encrypted on this device before anything is sent. Next: one face check to arm it."}
+          </p>
+          <Button variant="primary" size="lg" disabled={!canContinue} onClick={prepare}>
+            <Lock className="size-4" aria-hidden />
+            {busy ?? "Encrypt and continue"}
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }

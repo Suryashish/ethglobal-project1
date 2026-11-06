@@ -138,3 +138,22 @@ export function setReaderSession(s: ReaderSession) {
     /* ignore */
   }
 }
+
+/** Seals this browser has looked at (ids only; ids are public). Newest first, at most 12. */
+export function getRecentSeals(): string[] {
+  try {
+    const v = JSON.parse(ls()?.getItem("iigs.recent") ?? "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string" && /^[0-9a-z]{16}$/.test(x)) : [];
+  } catch {
+    return [];
+  }
+}
+export function addRecentSeal(id: string) {
+  try {
+    ls()?.setItem("iigs.recent", JSON.stringify([id, ...getRecentSeals().filter((x) => x !== id)].slice(0, 12)));
+  } catch {
+    /* ignore */
+  }
+}
+
+export { sealIdFromInput } from "../sealInput";

@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-// Writes frontend/.env.local from ../.secrets/keys.env (generated service keys) + sane dev defaults.
-// Existing values in .env.local are preserved (only missing/empty ones are filled). Never prints secrets.
+// Writes frontend/.env.local from, in increasing precedence:
+//   ../.secrets/config.json  (non-secret ids: ARKIV_ACCESS_KEY, WORLD_APP_ID, WORLD_RP_ID, addresses, public keys)
+//   ../.secrets/keys.env     (generated service keys + WORLD_SIGNING_KEY)
+//   ../scripts/testnet.env   (testnet overlay: contract address, public Arkiv key, World settings), if present
+// + sane dev defaults. Existing values in .env.local are preserved (only missing/empty ones are filled). Never prints secrets.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +11,8 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const keysPath = resolve(root, "../.secrets/keys.env");
+const configPath = resolve(root, "../.secrets/config.json");
+const overlayPath = resolve(root, "../scripts/testnet.env");
 const outPath = resolve(root, ".env.local");
 
 function parse(text) {
@@ -20,50 +25,65 @@ function parse(text) {
   return out;
 }
 
-const keys = existsSync(keysPath) ? parse(readFileSync(keysPath, "utf8")) : {};
-if (!existsSync(keysPath)) console.warn(`! ${keysPath} not found; service keys will be left empty`);
-const existing = existsSync(outPath) ? parse(readFileSync(outPath, "utf8")) : {};
+const readEnv = (p) => (existsSync(p) ? parse(readFileSync(p, "utf8")) : {});
+function readConfig(p) {
+  if (!existsSync(p)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(JSON.parse(readFileSync(p, "utf8")))) {
+    if (typeof v === "string" || typeof v === "number") out[k] = String(v);
+  }
+  return out;
+}
 
-const base = existing.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+if (!existsSync(keysPath)) console.warn(`! ${keysPath} not found; service keys will be left empty`);
+const nonEmpty = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== ""));
+// one source map, later files win (but an empty value never blanks out an earlier one)
+const src = { ...nonEmpty(readConfig(configPath)), ...nonEmpty(readEnv(keysPath)), ...nonEmpty(readEnv(overlayPath)) };
+const existing = readEnv(outPath);
+const pick = (...names) => {
+  for (const n of names) if (existing[n] || src[n]) return existing[n] || src[n];
+  return undefined;
+};
+
 const defaults = {
   // --- deployment ---
-  IIGS_DEP: "dev",
-  NEXT_PUBLIC_IIGS_DEP: existing.IIGS_DEP || "dev",
-  NEXT_PUBLIC_BASE_URL: base,
+  IIGS_DEP: src.IIGS_DEP ?? "dev",
+  NEXT_PUBLIC_IIGS_DEP: pick("NEXT_PUBLIC_IIGS_DEP", "IIGS_DEP") ?? "dev",
+  NEXT_PUBLIC_BASE_URL: src.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000",
   // --- Arkiv ---
-  ARKIV_ACCESS_KEY: "",
-  NEXT_PUBLIC_ARKIV_ACCESS_KEY: existing.ARKIV_ACCESS_KEY || "",
-  VERIFIER_PRIVATE_KEY: keys.VERIFIER_PRIVATE_KEY ?? "",
-  NEXT_PUBLIC_VERIFIER_ADDRESS: keys.VERIFIER_ADDRESS ?? "",
-  NEXT_PUBLIC_MIRROR_ADDRESS: keys.MIRROR_ADDRESS ?? "",
+  ARKIV_ACCESS_KEY: src.ARKIV_ACCESS_KEY ?? "",
+  NEXT_PUBLIC_ARKIV_ACCESS_KEY: src.NEXT_PUBLIC_ARKIV_ACCESS_KEY ?? "",
+  VERIFIER_PRIVATE_KEY: src.VERIFIER_PRIVATE_KEY ?? "",
+  NEXT_PUBLIC_VERIFIER_ADDRESS: pick("NEXT_PUBLIC_VERIFIER_ADDRESS", "VERIFIER_ADDRESS") ?? "",
+  NEXT_PUBLIC_MIRROR_ADDRESS: pick("NEXT_PUBLIC_MIRROR_ADDRESS", "MIRROR_ADDRESS") ?? "",
   // --- keys ---
-  NEXT_PUBLIC_ESCROW_PUBLIC_KEY: keys.ESCROW_PUBLIC_KEY ?? "",
-  GATED_SECRET_KEY: keys.GATED_SECRET_KEY ?? "",
-  NEXT_PUBLIC_GATED_PUBLIC_KEY: keys.GATED_PUBLIC_KEY ?? "",
-  READER_TOKEN_SECRET: keys.READER_TOKEN_SECRET ?? "",
+  NEXT_PUBLIC_ESCROW_PUBLIC_KEY: pick("NEXT_PUBLIC_ESCROW_PUBLIC_KEY", "ESCROW_PUBLIC_KEY") ?? "",
+  GATED_SECRET_KEY: src.GATED_SECRET_KEY ?? "",
+  NEXT_PUBLIC_GATED_PUBLIC_KEY: pick("NEXT_PUBLIC_GATED_PUBLIC_KEY", "GATED_PUBLIC_KEY") ?? "",
+  READER_TOKEN_SECRET: src.READER_TOKEN_SECRET ?? "",
   // --- Swarm ---
-  SWARM_BEE_URL: "https://api.gateway.ethswarm.org",
-  SWARM_BATCH_ID: "0".repeat(64),
-  NEXT_PUBLIC_SWARM_GATEWAY: "https://api.gateway.ethswarm.org",
+  SWARM_BEE_URL: src.SWARM_BEE_URL ?? "https://api.gateway.ethswarm.org",
+  SWARM_BATCH_ID: src.SWARM_BATCH_ID ?? "0".repeat(64),
+  NEXT_PUBLIC_SWARM_GATEWAY: src.NEXT_PUBLIC_SWARM_GATEWAY ?? "https://api.gateway.ethswarm.org",
   // --- Sepolia ---
-  SEPOLIA_RPC_URL: "https://ethereum-sepolia-rpc.publicnode.com",
-  SILENT_RELEASE_ADDRESS: "",
-  NEXT_PUBLIC_SILENT_RELEASE_ADDRESS: existing.SILENT_RELEASE_ADDRESS || "",
-  NEXT_PUBLIC_SEPOLIA_EXPLORER: "https://sepolia.etherscan.io",
+  SEPOLIA_RPC_URL: src.SEPOLIA_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com",
+  SILENT_RELEASE_ADDRESS: src.SILENT_RELEASE_ADDRESS ?? "",
+  NEXT_PUBLIC_SILENT_RELEASE_ADDRESS: pick("NEXT_PUBLIC_SILENT_RELEASE_ADDRESS", "SILENT_RELEASE_ADDRESS") ?? "",
+  NEXT_PUBLIC_SEPOLIA_EXPLORER: src.NEXT_PUBLIC_SEPOLIA_EXPLORER ?? "https://sepolia.etherscan.io",
   // --- World ---
-  WORLD_MODE: "mock",
-  NEXT_PUBLIC_WORLD_MODE: existing.WORLD_MODE || "mock",
-  WORLD_APP_ID: "",
-  WORLD_RP_ID: "",
-  WORLD_SIGNING_KEY: "",
-  WORLD_ENVIRONMENT: "staging",
-  WORLD_ACTION_OWNER: "iigs-owner",
-  WORLD_ACTION_READER: "iigs-reader",
-  WORLD_MAX_SYBIL_SCORE: "",
-  NEXT_PUBLIC_WORLD_ACTION_OWNER: existing.WORLD_ACTION_OWNER || "iigs-owner",
-  NEXT_PUBLIC_WORLD_ACTION_READER: existing.WORLD_ACTION_READER || "iigs-reader",
-  NEXT_PUBLIC_WORLD_APP_ID: existing.WORLD_APP_ID || "",
-  NEXT_PUBLIC_WORLD_ENVIRONMENT: existing.WORLD_ENVIRONMENT || "staging",
+  WORLD_MODE: src.WORLD_MODE ?? "mock",
+  NEXT_PUBLIC_WORLD_MODE: pick("NEXT_PUBLIC_WORLD_MODE", "WORLD_MODE") ?? "mock",
+  WORLD_APP_ID: src.WORLD_APP_ID ?? "",
+  WORLD_RP_ID: src.WORLD_RP_ID ?? "",
+  WORLD_SIGNING_KEY: src.WORLD_SIGNING_KEY ?? "",
+  WORLD_ENVIRONMENT: src.WORLD_ENVIRONMENT ?? "staging",
+  WORLD_ACTION_OWNER: src.WORLD_ACTION_OWNER ?? "iigs-owner",
+  WORLD_ACTION_READER: src.WORLD_ACTION_READER ?? "iigs-reader",
+  WORLD_MAX_SYBIL_SCORE: src.WORLD_MAX_SYBIL_SCORE ?? "",
+  NEXT_PUBLIC_WORLD_ACTION_OWNER: pick("NEXT_PUBLIC_WORLD_ACTION_OWNER", "WORLD_ACTION_OWNER") ?? "iigs-owner",
+  NEXT_PUBLIC_WORLD_ACTION_READER: pick("NEXT_PUBLIC_WORLD_ACTION_READER", "WORLD_ACTION_READER") ?? "iigs-reader",
+  NEXT_PUBLIC_WORLD_APP_ID: pick("NEXT_PUBLIC_WORLD_APP_ID", "WORLD_APP_ID") ?? "",
+  NEXT_PUBLIC_WORLD_ENVIRONMENT: pick("NEXT_PUBLIC_WORLD_ENVIRONMENT", "WORLD_ENVIRONMENT") ?? "staging",
 };
 
 const merged = { ...defaults };

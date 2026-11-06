@@ -19,17 +19,17 @@ export const CARD_CSS = `
 .ic{display:grid;place-items:center;width:22px;height:22px;flex:none;border-radius:6px;background:#f4e2dc;color:#a8352b;border:1px solid rgba(168,53,43,.22)}
 .ic svg{width:13px;height:13px}
 .card.open .ic{background:#e0ece2;color:#2e6a48;border-color:rgba(46,106,72,.25)}
-.card.cancelled .ic{background:#efe8db;color:#6c655a;border-color:#e3dacb}
+.card.cancelled .ic{background:#efe8db;color:#5f584e;border-color:#e3dacb}
 .lead{font-weight:500}
 .card.open .lead{color:#2e6a48}
-.card.cancelled .lead{color:#6c655a}
-.meta{color:#6c655a;font-size:12.5px}
-.sub{color:#6c655a;font-size:12.5px;margin-top:5px;padding-left:31px}
+.card.cancelled .lead{color:#5f584e}
+.meta{color:#5f584e;font-size:12.5px}
+.sub{color:#5f584e;font-size:12.5px;margin-top:5px;padding-left:31px}
 .plain{white-space:pre-wrap;word-break:break-word;margin-top:9px;padding:10px 13px;background:#fffdf9;border:1px solid #e3dacb;border-radius:9px;color:#1d1b17;font:16px/1.5 "Newsreader",Georgia,"Times New Roman",serif}
 button{all:unset;cursor:pointer;background:#1d1b17;color:#fbf8f2;padding:4px 11px;border-radius:7px;font-size:12.5px;font-weight:500}
 button:hover{background:#3b3731}
 button:focus-visible{outline:2px solid #1d1b17;outline-offset:2px}
-.brand{display:inline-flex;align-items:center;gap:5px;color:#998f80;font-size:11.5px;margin-left:auto}
+.brand{display:inline-flex;align-items:center;gap:5px;color:#776e61;font-size:11.5px;margin-left:auto}
 .brand svg{width:12px;height:12px;color:#a8352b}
 `;
 

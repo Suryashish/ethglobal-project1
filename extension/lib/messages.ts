@@ -14,6 +14,7 @@ export type Msg =
   | { type: "fetch-cipher"; ref: string }
   | { type: "open-verify" }
   | { type: "open-vault" }
+  | { type: "open-seal"; sealId: string }
   | { type: "apply-base-url" }
   | { type: "insert"; text: string; tabId?: number };
 
@@ -31,6 +32,7 @@ export type MsgReply = {
   "fetch-cipher": Reply<{ b64: string }>;
   "open-verify": Reply<{}>;
   "open-vault": Reply<{}>;
+  "open-seal": Reply<{}>;
   "apply-base-url": Reply<{}>;
   insert: Reply<{ inserted: boolean; method: string }>;
 };

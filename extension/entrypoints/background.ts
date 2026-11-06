@@ -168,7 +168,7 @@ async function senderKind(sender: Sender): Promise<"extension" | "bridge" | "sit
   return origin === new URL(await getBaseUrl()).origin ? "bridge" : "site";
 }
 
-const EXTENSION_ONLY = new Set<Msg["type"]>(["refresh-config", "start-arm", "apply-base-url"]);
+const EXTENSION_ONLY = new Set<Msg["type"]>(["refresh-config", "start-arm", "apply-base-url", "open-seal"]);
 const BRIDGE_ONLY = new Set<Msg["type"]>(["armed", "reader-token"]);
 
 async function handle(m: Msg, sender: Sender): Promise<unknown> {
@@ -227,6 +227,10 @@ async function handle(m: Msg, sender: Sender): Promise<unknown> {
       return { ok: true };
     case "open-vault":
       await browser.tabs.create({ url: (await getBaseUrl()) + "/app" });
+      return { ok: true };
+    case "open-seal":
+      if (!/^[0-9a-z]{16}$/.test(m.sealId)) return { ok: false, error: "bad seal id" };
+      await browser.tabs.create({ url: (await getBaseUrl()) + "/s/" + m.sealId });
       return { ok: true };
     case "apply-base-url":
       cache.clear();

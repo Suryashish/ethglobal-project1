@@ -1,5 +1,5 @@
 /* Paper, ink, sealing wax and leaf: mirrors the web app (frontend/src/app/globals.css). */
-:root{--paper:#f5f0e6;--card:#fbf8f2;--sunk:#efe8db;--field:#fffdf9;--line:#e3dacb;--line-strong:#cec2ad;--ink:#1d1b17;--ink-soft:#3b3731;--muted:#6c655a;--faint:#998f80;--wax:#a8352b;--wax-soft:#f4e2dc;--leaf:#2e6a48;--leaf-soft:#e0ece2;--danger:#b3261e;
+:root{--paper:#f5f0e6;--card:#fbf8f2;--sunk:#efe8db;--field:#fffdf9;--line:#e3dacb;--line-strong:#cec2ad;--ink:#1d1b17;--ink-soft:#3b3731;--muted:#5f584e;--faint:#776e61;--wax:#a8352b;--wax-soft:#f4e2dc;--leaf:#2e6a48;--leaf-soft:#e0ece2;--danger:#b3261e;
   --sans:"IBM Plex Sans",ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--serif:"Newsreader",Georgia,serif;--mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;color-scheme:light}
 *{box-sizing:border-box}
 html,body{background:var(--paper)}
@@ -78,3 +78,5 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--ink);outline-
 .settings summary::after{content:"+";font:400 18px/1 var(--sans);color:var(--muted)}
 .settings[open] summary{margin-bottom:12px}
 .settings[open] summary::after{content:"–"}
+.links{display:flex;gap:14px;margin-top:8px}
+button.link.strong{color:var(--ink);font-weight:500}

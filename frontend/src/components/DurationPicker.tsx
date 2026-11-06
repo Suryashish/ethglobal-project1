@@ -3,10 +3,14 @@ import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { humanInterval } from "@/lib/format";
 
+// Short ones are for trying it out; the long ones are what a real dead-man's switch uses.
 export const PRESETS = [
   { sec: 120, label: "2 min" },
   { sec: 300, label: "5 min" },
+  { sec: 3600, label: "1 hour" },
+  { sec: 86400, label: "1 day" },
   { sec: 5 * 86400, label: "5 days" },
+  { sec: 30 * 86400, label: "30 days" },
 ] as const;
 const UNITS = { minutes: 60, hours: 3600, days: 86400 } as const;
 
@@ -29,7 +33,7 @@ export function DurationPicker({
   return (
     <fieldset className="space-y-3">
       <legend className="mb-3 text-sm font-medium text-ink-soft">{legend}</legend>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" role="group" aria-label={legend}>
         {PRESETS.map((p) => (
           <button
             key={p.sec}

@@ -30,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           position="bottom-right"
           richColors
           closeButton
+          mobileOffset={{ bottom: 88 }}
           toastOptions={{
             style: {
               background: "#fbf8f2",

@@ -1,19 +1,23 @@
 "use client";
 import type { SealState } from "@iigs/core";
-import { Ban, Hourglass, Radio, SearchX, ShieldCheck, Globe2 } from "lucide-react";
+import { Ban, Hourglass, Radio, SearchX, ShieldCheck, Globe2, Share2 } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getConfig } from "@/lib/client/config";
 import { useNowSec } from "@/lib/client/hooks";
-import { getLocalSeals, loadSealState } from "@/lib/client/seals";
+import { addRecentSeal, getLocalSeals, loadSealState } from "@/lib/client/seals";
 import { audienceText, deadlineLabel, effectiveStatus, ruleText } from "@/lib/rules";
 import type { PublicConfig } from "@/lib/types";
+import { CopyButton } from "./CopyButton";
 import { Countdown } from "./Countdown";
 import { ProofLinks } from "./ProofLinks";
 import { ReleasedView } from "./ReleasedView";
+import { SealActions } from "./SealActions";
 import { SharePanel } from "./SharePanel";
 import { StatusChip } from "./StatusChip";
 import { Badge } from "./ui/Badge";
+import { buttonStyles } from "./ui/Button";
 import { Card } from "./ui/Card";
 
 type Loaded = { state: SealState | null; via: "arkiv" | "api" };
@@ -25,6 +29,8 @@ export function SealReader({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [cfg, setCfg] = useState<PublicConfig | null>(null);
   const [mine, setMine] = useState(false);
+  const [reloads, setReloads] = useState(0);
+  const reload = () => setReloads((n) => n + 1);
   const now = useNowSec(1000);
   const final = loaded?.state?.status === "DISARMED" || loaded?.state?.status === "RELEASED";
 
@@ -42,6 +48,7 @@ export function SealReader({ id }: { id: string }) {
         if (!stop) {
           setLoaded(l);
           setError(null);
+          if (l.state) addRecentSeal(id);
         }
       } catch (e) {
         if (!stop) setError(e instanceof Error ? e.message : String(e));
@@ -53,7 +60,7 @@ export function SealReader({ id }: { id: string }) {
       stop = true;
       clearInterval(t);
     };
-  }, [id, final]);
+  }, [id, final, reloads]);
 
   if (loaded === undefined) {
     return (
@@ -77,6 +84,10 @@ export function SealReader({ id }: { id: string }) {
             There is no seal <span className="font-mono">{id}</span> on Arkiv. If it was just armed, it can take a few seconds to
             appear; this page keeps checking.
           </p>
+          <div className="flex flex-wrap justify-center gap-2 pt-3">
+            <Link href="/open" className={buttonStyles({ size: "sm" })}>Open a different seal</Link>
+            <Link href="/app" className={buttonStyles({ size: "sm", variant: "ghost" })}>Your seals</Link>
+          </div>
         </Card>
       </div>
     );
@@ -103,7 +114,25 @@ export function SealReader({ id }: { id: string }) {
       {justArmed && mine ? (
         <Card className="border-released/25 bg-released-soft/50">
           <p className="font-medium text-released">Armed. The switch is live.</p>
-          <p className="mt-1 text-sm text-muted">Post the hidden text below on X or Reddit, or share the link. Keep this device: it is how you find your seal in the app.</p>
+          <ol className="mt-3 space-y-2 text-sm text-ink-soft">
+            <li className="flex gap-3">
+              <span className="font-serif text-[17px] leading-5 text-released">1</span>
+              <span>Share it: post the hidden text below on X or Reddit, or send the link. People knowing it&apos;s armed is what protects you.</span>
+            </li>
+            <li className="flex gap-3">
+              <span className="font-serif text-[17px] leading-5 text-released">2</span>
+              <span>
+                {seal.intervalSec > 0
+                  ? "Check in before the countdown runs out: tap I'm OK here or on Your seals. Each check-in is one face scan."
+                  : "Nothing else to do. It opens on its own unless you disarm it."}
+              </span>
+            </li>
+            <li className="flex gap-3">
+              <span className="font-serif text-[17px] leading-5 text-released">3</span>
+              <span>Keep this browser. It is how this site knows the seal is yours.</span>
+            </li>
+          </ol>
+          <Link href="/app" className={buttonStyles({ size: "sm", className: "mt-4" })}>Go to your seals</Link>
         </Card>
       ) : null}
 
@@ -122,7 +151,17 @@ export function SealReader({ id }: { id: string }) {
               <Globe2 className="size-4" aria-hidden /> {audienceText(seal)}
             </p>
           ) : null}
+          {mine ? (
+            <div className="flex justify-center border-t border-line pt-5 [&>div]:justify-center">
+              <SealActions state={state} onChanged={reload} />
+            </div>
+          ) : null}
         </Card>
+      ) : null}
+      {status === "RELEASING" && mine ? (
+        <div className="flex justify-end">
+          <SealActions state={state} onChanged={reload} />
+        </div>
       ) : null}
 
       {status === "RELEASING" ? (
@@ -144,6 +183,17 @@ export function SealReader({ id }: { id: string }) {
       {status === "RELEASED" ? <ReleasedView state={state} /> : null}
 
       {mine && cfg ? <SharePanel seal={seal} baseUrl={cfg.baseUrl} showPost={seal.contentType === "inline" || seal.source === "extension"} /> : null}
+
+      {!mine && status === "ARMED" ? (
+        <Card className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <Share2 className="size-5 shrink-0 text-muted" aria-hidden />
+          <p className="flex-1 text-sm text-ink-soft">
+            Pass this page on. The more people know this switch is armed, the less anyone gains by silencing its author. It opens
+            here on its own; there&apos;s no need to refresh.
+          </p>
+          <CopyButton text={`${cfg?.baseUrl ?? window.location.origin}/s/${seal.sealId}`} label="Copy link" />
+        </Card>
+      ) : null}
 
       <section aria-labelledby="proof" className="space-y-3 pt-4">
         <h2 id="proof" className="flex items-center gap-2 font-serif text-[22px] text-fg">

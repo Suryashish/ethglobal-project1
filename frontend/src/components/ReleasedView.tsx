@@ -18,6 +18,9 @@ type Phase =
 // Raster images only. SVG is NOT previewed: an author-supplied SVG can carry <script>, and a blob: URL opened in a
 // new tab runs with this site's origin. Everything that is not previewable is served as application/octet-stream.
 const PREVIEW_IMG = /^image\/(png|jpe?g|gif|webp|avif|bmp)$/;
+// Media elements only decode audio/video; they never execute the blob, so these are as safe to preview as images.
+const PREVIEW_VIDEO = /^video\/(mp4|webm|ogg|quicktime|x-m4v)$/;
+const PREVIEW_AUDIO = /^audio\/(mpeg|mp3|mp4|x-m4a|aac|ogg|opus|wav|x-wav|wave|webm|flac|x-flac)$/;
 
 /** Decrypts a released seal in the browser (PUBLIC: key from Arkiv; GATED: key from the key service). */
 export function ReleasedView({ state }: { state: SealState }) {
@@ -121,7 +124,7 @@ function Opened({ env }: { env: Envelope }) {
   const [url, setUrl] = useState<string | null>(null);
   const h = env.header;
   const mime = h.kind === "file" ? h.mime.toLowerCase() : "";
-  const previewable = PREVIEW_IMG.test(mime) || mime === "application/pdf";
+  const previewable = PREVIEW_IMG.test(mime) || PREVIEW_VIDEO.test(mime) || PREVIEW_AUDIO.test(mime) || mime === "application/pdf";
   useEffect(() => {
     if (h.kind !== "file") return;
     const blob = new Blob([env.body.slice().buffer as ArrayBuffer], { type: previewable ? mime : "application/octet-stream" });
@@ -161,6 +164,12 @@ function Opened({ env }: { env: Envelope }) {
         // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt={h.name} className="max-h-[70vh] w-full rounded-xl border border-line bg-bg object-contain" />
       ) : null}
+      {url && PREVIEW_VIDEO.test(mime) ? (
+        <video src={url} controls playsInline preload="metadata" className="max-h-[70vh] w-full rounded-xl border border-line bg-bg" aria-label={h.name}>
+          <p className="p-4 text-sm text-muted">Your browser cannot play this video. Use the download button.</p>
+        </video>
+      ) : null}
+      {url && PREVIEW_AUDIO.test(mime) ? <audio src={url} controls preload="metadata" className="w-full" aria-label={h.name} /> : null}
       {url && mime === "application/pdf" ? (
         <object data={url} type="application/pdf" className="h-[70vh] w-full rounded-xl border border-line" aria-label={h.name}>
           <p className="p-4 text-sm text-muted">Your browser cannot preview PDFs. Use the download button.</p>

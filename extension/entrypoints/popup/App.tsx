@@ -29,10 +29,10 @@ function localInputValue(ms: number) {
 
 export default function App() {
   const [text, setText] = useState("");
-  const [preset, setPreset] = useState<string>("300");
+  const [preset, setPreset] = useState<string>("86400");
   const [custom, setCustom] = useState(localInputValue(Date.now() + 3600_000));
   const [hbOn, setHbOn] = useState(false);
-  const [hb, setHb] = useState("300");
+  const [hb, setHb] = useState("86400");
   const [countries, setCountries] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -255,7 +255,7 @@ export default function App() {
       <section className="card">
         <div className="split">
           <div className="eyebrow">My sealed posts</div>
-          <button className="link" onClick={() => send({ type: "open-vault" })}>Open dashboard ↗</button>
+          <button className="link" onClick={() => send({ type: "open-vault" })}>All your seals ↗</button>
         </div>
         {!mine.length && <div className="empty">Nothing sealed yet.</div>}
         {mine.map((p) => {
@@ -269,10 +269,21 @@ export default function App() {
                 </span>
                 <code>{p.sealId}</code>
               </div>
-              {s?.status === "ARMED" && s.nextDeadline && <div className="count">opens in {formatCountdown(s.nextDeadline - nowSec())}</div>}
+              {s?.status === "ARMED" && s.nextDeadline && (
+                <div className="count">
+                  {s.nextDeadlineRule === "HEARTBEAT" ? "check in within " : "opens in "}
+                  {formatCountdown(s.nextDeadline - nowSec())}
+                </div>
+              )}
               <div className="actions">
                 <button className="ghost small" onClick={() => copy(p.post)}>Copy hidden post</button>
                 <button className="ghost small" onClick={() => insert(p.post)}>Insert into current page</button>
+              </div>
+              <div className="links">
+                <button className="link" onClick={() => send({ type: "open-seal", sealId: p.sealId })}>Seal page ↗</button>
+                {s?.status === "ARMED" && (s.seal.intervalSec ?? 0) > 0 && (
+                  <button className="link strong" onClick={() => send({ type: "open-vault" })}>Check in (I&apos;m OK) ↗</button>
+                )}
               </div>
             </div>
           );
