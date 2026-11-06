@@ -68,6 +68,8 @@ export type ArkivSink = {
 };
 
 export type MirrorDeps = {
+  /** Stay this many blocks behind the RPC head (load-balanced RPCs lag; also reorg safety). Default 0. */
+  confirmations?: number;
   chain: ChainReader;
   arkiv: ArkivSink;
   log: Logger;
@@ -117,7 +119,8 @@ export async function mirrorEvent(deps: MirrorDeps, st: MirrorState, log: Releas
  */
 export async function syncOnce(deps: MirrorDeps, st: MirrorState): Promise<{ written: number; skipped: number; head: bigint }> {
   const sl = deps.sleepFn;
-  const head = await retry(() => deps.chain.getBlockNumber(), { attempts: 3, baseMs: deps.retryBaseMs ?? 1000, ...(sl ? { sleepFn: sl } : {}) });
+  const rawHead = await retry(() => deps.chain.getBlockNumber(), { attempts: 3, baseMs: deps.retryBaseMs ?? 1000, ...(sl ? { sleepFn: sl } : {}) });
+  const head = rawHead - BigInt(deps.confirmations ?? 0);
   const cur = deps.loadCursor();
   let from = BigInt(Math.max(deps.startBlock, cur?.nextBlock ?? 0));
   const minChunk = deps.minChunk ?? 10;

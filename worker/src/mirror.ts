@@ -76,6 +76,8 @@ export async function main() {
     loadCursor: () => loadCursor(path),
     saveCursor: (c) => saveCursor(path, c),
     startBlock: cfg.startBlock,
+    // Public load-balanced RPCs (e.g. publicnode) reject getLogs at the very head; stay 2 blocks behind on real chains.
+    confirmations: Number(process.env.MIRROR_CONFIRMATIONS ?? (cfg.chain.chainId === 31337 ? 0 : 2)),
   };
   L.info(`watching ${cfg.chain.releaseAddress} on chain ${cfg.chain.chainId} from block ${cfg.startBlock} → Arkiv dep="${cfg.arkiv.dep}", mirror ${cfg.arkiv.mirror}`);
   try {
