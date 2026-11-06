@@ -1,10 +1,22 @@
 "use client";
 /**
- * WorldVerifyButton. STUB: mock mode only (a dev "World ID simulator" modal).
- * Live mode (IDKit widget) is added by the World integration.
+ * WorldVerifyButton.
+ *  - mock mode: a dark "World ID simulator (dev)" modal (Author / thief, nationality picker, fake face scan).
+ *  - live mode: fetches a signed rp_context from `rpContextUrl`, then opens the IDKit 4.x widget
+ *    (Selfie Check session for owner actions, Identity Check nationality for readers).
+ * Cancel / error / unavailable credential all surface through `onError` and an inline message (the "alternative path").
  */
-import { useState } from "react";
+import { lazy, Suspense, useEffect, useState, type CSSProperties } from "react";
+import type { RpContext } from "@worldcoin/idkit";
 import { MOCK_IDENTITIES, MOCK_NATIONALITIES, type WorldKind, type WorldProofEnvelope } from "./types.js";
+
+export type WorldClientConfig = {
+  mode: "mock" | "live";
+  appId?: string;
+  environment?: "staging" | "production" | "sandbox";
+  actionOwner?: string;
+  actionReader?: string;
+};
 
 export type WorldVerifyButtonProps = {
   kind: WorldKind;
@@ -14,19 +26,117 @@ export type WorldVerifyButtonProps = {
   className?: string;
   onVerified: (env: WorldProofEnvelope) => Promise<void> | void;
   onError?: (message: string) => void;
+  /** Where to fetch the signed rp_context (live mode). Default `/api/world/rp-context`. */
+  rpContextUrl?: string;
+  /** Override env-derived config. */
+  config?: WorldClientConfig;
+  /**
+   * Owner actions after arming: the saved Selfie Check session id (the seal's `ownerNullifier`).
+   * Omit it when arming (a new session is created). If omitted for a non-arm action, the last session
+   * created in this browser for the same seal is used.
+   */
+  sessionId?: string;
+  /** Reader: allowed countries (ISO alpha-2) the reader can claim. Default: a built-in list. */
+  countries?: string[];
 };
 
+// Direct process.env.NEXT_PUBLIC_* expressions so Next can inline them (no dynamic lookups).
+function envConfig(): WorldClientConfig {
+  const get = (f: () => string | undefined) => { try { return f(); } catch { return undefined; } };
+  const mode = get(() => process.env.NEXT_PUBLIC_WORLD_MODE);
+  const envName = get(() => process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT);
+  return {
+    mode: mode === "live" ? "live" : "mock",
+    appId: get(() => process.env.NEXT_PUBLIC_WORLD_APP_ID),
+    environment: envName === "production" || envName === "sandbox" ? envName : "staging",
+    actionOwner: get(() => process.env.NEXT_PUBLIC_WORLD_ACTION_OWNER) || "iigs-owner",
+    actionReader: get(() => process.env.NEXT_PUBLIC_WORLD_ACTION_READER) || "iigs-reader",
+  };
+}
+
+const LiveWidget = lazy(() => import("./live.js"));
+
+const SESSION_KEY = "iigs.world.session.";
+function parseSignal(signal: string): { action: string; sealId: string } {
+  const parts = signal.split("|"); // iigs|<action>|<sealId>|<extra>|<issuedAt>
+  return { action: parts[1] ?? "", sealId: parts[2] ?? "" };
+}
+function lsGet(k: string): string | null { try { return window.localStorage.getItem(k); } catch { return null; } }
+function lsSet(k: string, v: string) { try { window.localStorage.setItem(k, v); } catch { /* ignore */ } }
+
+const css = `
+.iigs-w-back{position:fixed;inset:0;background:rgba(3,6,12,.72);backdrop-filter:blur(4px);display:grid;place-items:center;z-index:2147483000;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.iigs-w-card{width:min(380px,92vw);background:#0e1117;color:#e8ecf3;border:1px solid #232a38;border-radius:18px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.iigs-w-card h3{margin:0 0 2px;font-size:17px;font-weight:650}
+.iigs-w-sub{margin:0 0 14px;font-size:13px;color:#8d98ad;line-height:1.4}
+.iigs-w-tag{display:inline-block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#f5c26b;background:#2a2112;border:1px solid #4a3a18;border-radius:999px;padding:2px 8px;margin-bottom:10px}
+.iigs-w-opt{display:flex;gap:10px;align-items:center;padding:10px 12px;margin:6px 0;border:1px solid #232a38;border-radius:12px;cursor:pointer;background:#131824;font-size:14px}
+.iigs-w-opt[data-on="1"]{border-color:#5b8cff;background:#16203a}
+.iigs-w-opt input{accent-color:#5b8cff}
+.iigs-w-row{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.iigs-w-btn{border:1px solid #2b3446;background:#161c2a;color:#e8ecf3;border-radius:10px;padding:8px 14px;font-size:14px;cursor:pointer}
+.iigs-w-btn[data-primary="1"]{background:#5b8cff;border-color:#5b8cff;color:#fff;font-weight:600}
+.iigs-w-btn:disabled{opacity:.5;cursor:default}
+.iigs-w-err{margin:10px 0 0;font-size:13px;color:#ff8a8a}
+.iigs-w-sel{width:100%;margin-top:6px;background:#131824;color:#e8ecf3;border:1px solid #232a38;border-radius:10px;padding:9px 10px;font-size:14px}
+.iigs-w-chk{display:flex;gap:8px;align-items:center;margin-top:12px;font-size:12.5px;color:#8d98ad}
+.iigs-w-scan{display:grid;place-items:center;padding:14px 0 6px}
+.iigs-w-ring{width:120px;height:120px;border-radius:50%;border:3px solid #5b8cff;position:relative;overflow:hidden;background:radial-gradient(circle at 50% 38%,#1c2742 0 28%,#0e1117 29%)}
+.iigs-w-ring::after{content:"";position:absolute;left:0;right:0;height:3px;background:#7fe0b4;box-shadow:0 0 14px #7fe0b4;animation:iigs-w-scan 1.1s ease-in-out infinite alternate}
+@keyframes iigs-w-scan{from{top:8%}to{top:88%}}
+.iigs-w-msg{text-align:center;margin-top:12px;font-size:14px;color:#cdd5e4}
+`;
+
+function Modal(props: { children: React.ReactNode }) {
+  return (
+    <div className="iigs-w-back" role="dialog" aria-modal="true">
+      <style>{css}</style>
+      <div className="iigs-w-card">{props.children}</div>
+    </div>
+  );
+}
+
 export function WorldVerifyButton(props: WorldVerifyButtonProps) {
+  const cfg = props.config ?? envConfig();
+  const live = cfg.mode === "live";
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // mock state
   const [identity, setIdentity] = useState<string>("author");
   const [nationality, setNationality] = useState<string>("IN");
+  const [scanning, setScanning] = useState(false);
+  const [noCredential, setNoCredential] = useState(false);
 
-  async function submit() {
+  // live state
+  const [rpContext, setRpContext] = useState<RpContext | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [liveNationality, setLiveNationality] = useState<string>("");
+  const [liveOpen, setLiveOpen] = useState(false);
+  const countries = props.countries && props.countries.length ? props.countries : [...MOCK_NATIONALITIES];
+
+  function fail(msg: string) {
+    setError(msg);
+    props.onError?.(msg);
+  }
+
+  // ---------- mock ----------
+  async function submitMock() {
     setBusy(true);
     setError(null);
     try {
+      if (noCredential) {
+        throw new Error(props.kind === "owner"
+          ? "Selfie Check is not available for this World ID. Open World App, complete Selfie Check, then try again."
+          : "No passport credential with a nationality is available for this World ID.");
+      }
+      if (props.kind === "owner") {
+        setScanning(true);
+        await new Promise((r) => setTimeout(r, 1500));
+      }
       await props.onVerified({
         mode: "mock",
         kind: props.kind,
@@ -35,47 +145,137 @@ export function WorldVerifyButton(props: WorldVerifyButtonProps) {
       });
       setOpen(false);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
-      props.onError?.(msg);
+      fail(e instanceof Error ? e.message : String(e));
+    } finally {
+      setScanning(false);
+      setBusy(false);
+    }
+  }
+
+  // ---------- live ----------
+  async function startLive(nat?: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (!cfg.appId) throw new Error("World ID is not configured (NEXT_PUBLIC_WORLD_APP_ID is missing).");
+      const res = await fetch(props.rpContextUrl ?? "/api/world/rp-context", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind: props.kind, signal: props.signal }),
+      });
+      const body = (await res.json().catch(() => null)) as (RpContext & { message?: string; error?: string }) | null;
+      if (!res.ok || !body || !body.nonce) throw new Error(body?.message || body?.error || `Could not start World ID (HTTP ${res.status}).`);
+      setRpContext(body);
+      if (nat) setLiveNationality(nat);
+      setLiveOpen(true);
+    } catch (e) {
+      fail(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   }
 
+  function onClick() {
+    setError(null);
+    if (!live) { setOpen(true); return; }
+    if (props.kind === "reader") { setLiveNationality(countries[0] ?? ""); setPicking(true); return; }
+    void startLive();
+  }
+
+  const { action, sealId } = parseSignal(props.signal);
+  const sessionId = props.sessionId ?? (action !== "arm" && sealId ? lsGet(SESSION_KEY + sealId) ?? undefined : undefined);
+
+  async function onLiveResult(env: WorldProofEnvelope) {
+    await props.onVerified(env);
+    // remember the session created at arm time so later owner actions on this device can prove it
+    const sid = (env.result as { session_id?: unknown } | null)?.session_id;
+    if (props.kind === "owner" && action === "arm" && sealId && typeof sid === "string") lsSet(SESSION_KEY + sealId, sid);
+  }
+
+  const showErrorInline = error && !open && !picking;
+  const dis = props.disabled || busy || liveOpen;
+
   return (
     <>
-      <button type="button" className={props.className} disabled={props.disabled || busy} onClick={() => setOpen(true)}>
-        {busy ? "Verifying…" : props.label}
+      <button type="button" className={props.className} disabled={dis} onClick={onClick}>
+        {busy && !open ? "Verifying…" : props.label}
       </button>
-      {error && !open ? <p role="alert" style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>{error}</p> : null}
-      {open ? (
-        <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "grid", placeItems: "center", zIndex: 1000 }}>
-          <div style={{ background: "#111", color: "#eee", padding: 20, borderRadius: 12, width: 360, fontFamily: "system-ui" }}>
-            <h3 style={{ margin: "0 0 4px" }}>World ID simulator (dev)</h3>
-            <p style={{ fontSize: 13, opacity: 0.7, margin: "0 0 12px" }}>
-              {props.kind === "owner" ? "Selfie Check — who is in front of the camera?" : "Passport check — reader nationality"}
-            </p>
-            {MOCK_IDENTITIES.map((i) => (
-              <label key={i.id} style={{ display: "block", margin: "6px 0" }}>
-                <input type="radio" name="iigs-mock-id" checked={identity === i.id} onChange={() => setIdentity(i.id)} /> {i.label}
-              </label>
-            ))}
-            {props.kind === "reader" ? (
-              <label style={{ display: "block", marginTop: 10 }}>
-                Nationality{" "}
-                <select value={nationality} onChange={(e) => setNationality(e.target.value)}>
-                  {MOCK_NATIONALITIES.map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </label>
-            ) : null}
-            {error ? <p role="alert" style={{ color: "#f87171", fontSize: 13 }}>{error}</p> : null}
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
-              <button type="button" onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
-              <button type="button" onClick={submit} disabled={busy}>{busy ? "Verifying…" : "Verify"}</button>
-            </div>
+      {showErrorInline ? <p role="alert" style={{ color: "#f87171", fontSize: 13, marginTop: 6 } as CSSProperties}>{error}</p> : null}
+
+      {mounted && live && picking ? (
+        <Modal>
+          <span className="iigs-w-tag">World ID</span>
+          <h3>Prove your nationality</h3>
+          <p className="iigs-w-sub">Your World ID attests only whether you hold a passport of the country you pick. No name, no birthdate.</p>
+          <select className="iigs-w-sel" value={liveNationality} onChange={(e) => setLiveNationality(e.target.value)}>
+            {countries.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <div className="iigs-w-row">
+            <button type="button" className="iigs-w-btn" onClick={() => setPicking(false)}>Cancel</button>
+            <button type="button" className="iigs-w-btn" data-primary="1" disabled={busy || !liveNationality}
+              onClick={() => { setPicking(false); void startLive(liveNationality); }}>Continue</button>
           </div>
-        </div>
+        </Modal>
+      ) : null}
+
+      {mounted && live && liveOpen && rpContext && cfg.appId ? (
+        <Suspense fallback={null}>
+          <LiveWidget
+            kind={props.kind}
+            signal={props.signal}
+            rpContext={rpContext}
+            config={{ appId: cfg.appId, environment: cfg.environment ?? "staging", actionReader: cfg.actionReader ?? "iigs-reader" }}
+            sessionId={sessionId}
+            nationality={liveNationality}
+            onResult={onLiveResult}
+            onFail={(m) => fail(m)}
+            onClose={() => { setLiveOpen(false); setRpContext(null); }}
+          />
+        </Suspense>
+      ) : null}
+
+      {mounted && !live && open ? (
+        <Modal>
+          <span className="iigs-w-tag">Dev only</span>
+          <h3>World ID simulator (dev)</h3>
+          {scanning ? (
+            <>
+              <div className="iigs-w-scan"><div className="iigs-w-ring" /></div>
+              <p className="iigs-w-msg">Scanning face…</p>
+            </>
+          ) : (
+            <>
+              <p className="iigs-w-sub">
+                {props.kind === "owner"
+                  ? "Selfie Check: who is in front of the camera right now?"
+                  : "Passport check: which nationality does the reader prove?"}
+              </p>
+              {MOCK_IDENTITIES.map((i) => (
+                <label key={i.id} className="iigs-w-opt" data-on={identity === i.id ? "1" : "0"}>
+                  <input type="radio" name="iigs-mock-id" checked={identity === i.id} onChange={() => setIdentity(i.id)} />
+                  {i.label}
+                </label>
+              ))}
+              {props.kind === "reader" ? (
+                <label style={{ display: "block", marginTop: 12, fontSize: 13, color: "#8d98ad" }}>
+                  Nationality
+                  <select className="iigs-w-sel" value={nationality} onChange={(e) => setNationality(e.target.value)}>
+                    {MOCK_NATIONALITIES.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+              ) : null}
+              <label className="iigs-w-chk">
+                <input type="checkbox" checked={noCredential} onChange={(e) => setNoCredential(e.target.checked)} />
+                Simulate: credential unavailable on this World ID
+              </label>
+            </>
+          )}
+          {error ? <p role="alert" className="iigs-w-err">{error}</p> : null}
+          <div className="iigs-w-row">
+            <button type="button" className="iigs-w-btn" disabled={busy} onClick={() => { setOpen(false); setError(null); props.onError?.("Verification cancelled."); }}>Cancel</button>
+            <button type="button" className="iigs-w-btn" data-primary="1" disabled={busy} onClick={submitMock}>{busy ? "Verifying…" : "Verify"}</button>
+          </div>
+        </Modal>
       ) : null}
     </>
   );
