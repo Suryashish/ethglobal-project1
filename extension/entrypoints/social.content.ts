@@ -4,14 +4,17 @@ import { buildCard, CARD_CSS, type DecState } from "../lib/cardView";
 import { decryptFromB64 } from "../lib/decrypt";
 import { expiresAtMs, formatCountdown, nowSec } from "../lib/format";
 import { closestEditable, copyToClipboard, findEditable, insertIntoEditable, toast } from "../lib/insert";
-import { send, type TabMsg } from "../lib/messages";
+import { send, type ScanSummary, type TabMsg } from "../lib/messages";
 import { MARK, scanRoot } from "../lib/scan";
 import type { WireState } from "../lib/wire";
 
 const E2E = import.meta.env.VITE_IIGS_E2E === "1";
 
 type Entry = { state: WireState | null | undefined; dec?: DecState; busy?: boolean; lastKind?: string };
-type Host = { el: Element; ids: string[]; host: HTMLElement; root: ShadowRoot };
+/** `covert` ids came from a hidden cover phrase: no card at all until the seal has opened. */
+type Host = { el: Element; ids: string[]; covert: Set<string>; host: HTMLElement; root: ShadowRoot };
+
+const isOpen = (kind: string) => kind === "open-public" || kind === "open-gated";
 
 export default defineContentScript({
   matches: [
@@ -39,6 +42,10 @@ export default defineContentScript({
     );
     browser.runtime.onMessage.addListener((raw, _sender, sendResponse) => {
       const m = raw as TabMsg;
+      if (m?.type === "iigs-scan") {
+        void manualScan().then(sendResponse, () => sendResponse({ found: 0, opened: 0, decrypted: 0 }));
+        return true;
+      }
       if (!m || m.type !== "iigs-insert") return false;
       void (async () => {
         const ed = findEditable(document, lastEditable);
@@ -47,7 +54,7 @@ export default defineContentScript({
           if (r.inserted) return sendResponse(r);
         }
         const copied = await copyToClipboard(document, m.text);
-        toast(document, copied ? "Sealed post copied — paste it" : "Could not insert. Copy it from the Silent Seal popup.");
+        toast(document, copied ? "Hidden post copied — paste it" : "Could not insert. Copy it from the Silent Seal popup.");
         sendResponse({ inserted: false, method: copied ? "clipboard" : "none" });
       })();
       return true;
@@ -76,6 +83,7 @@ export default defineContentScript({
         const e = entries.get(id);
         const model = modelFor(id);
         e && (e.lastKind = model.kind);
+        if (h.covert.has(id) && !isOpen(model.kind)) continue; // hidden post: stay invisible until it opens
         const card = buildCard(document, id, {
           model,
           dec: e?.dec,
@@ -155,7 +163,20 @@ export default defineContentScript({
         entries.set(id, prev);
       }
       ids.forEach(renderFor);
-      ids.forEach((id) => void maybeDecrypt(id));
+      await Promise.all(ids.map((id) => maybeDecrypt(id)));
+    }
+
+    /** Popup "Scan this page": rescan now, refresh every seal on the page, decrypt what has opened. */
+    async function manualScan(): Promise<ScanSummary> {
+      scan();
+      const ids = [...new Set(hosts.flatMap((h) => h.ids))];
+      await fetchStates(ids, true);
+      const opened = ids.filter((id) => isOpen(modelFor(id).kind));
+      return {
+        found: ids.length,
+        opened: opened.length,
+        decrypted: opened.filter((id) => entries.get(id)?.dec?.status === "ok").length,
+      };
     }
 
     // ---- scanning ----
@@ -170,10 +191,13 @@ export default defineContentScript({
         f.el.setAttribute(MARK, f.ids.join(","));
         const host = document.createElement("div");
         host.setAttribute("data-iigs-card", f.ids.join(","));
+        // Reddit renders posts as web components: a slotted title only shows siblings in the same slot.
+        const slot = f.el.getAttribute("slot");
+        if (slot) host.setAttribute("slot", slot);
         host.style.display = "none";
         const root = host.attachShadow({ mode: "open" });
         f.el.insertAdjacentElement("afterend", host);
-        hosts.push({ el: f.el, ids: f.ids, host, root });
+        hosts.push({ el: f.el, ids: f.ids, covert: f.covert, host, root });
         for (const id of f.ids) {
           if (!entries.has(id)) {
             entries.set(id, { state: undefined });

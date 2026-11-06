@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chromium, type BrowserContext, type Page, type Worker } from "playwright-core";
 import {
-  createSeal, formatSealedPost, fromBase64, generateKeypair, toBase64, toHex, unwrapKey, sha256Hex, encryptContent, textEnvelope, type SealState,
+  createSeal, encodeCover, formatSealedPost, fromBase64, generateKeypair, toBase64, toHex, unwrapKey, sha256Hex, encryptContent, textEnvelope, type SealState,
 } from "@iigs/core";
 import { decodeDraft } from "../../lib/draft";
 
@@ -61,6 +61,7 @@ function addFix(name: string, s: ReturnType<typeof mkSeal>, status: SealState["s
 const keysByToken: Record<string, string> = {};
 let gatedReleased!: ReturnType<typeof mkSeal>;
 const armedPosts: string[] = [];
+let hFlipSeal!: ReturnType<typeof mkSeal>;
 const armedDrafts: any[] = [];
 
 function startApi(): Promise<Server> {
@@ -76,6 +77,16 @@ function startApi(): Promise<Server> {
   addFix("releasedSwarm", sw, "RELEASED", { swarmRef, release: { releasedAt: now(), releasedKeyB64: sw.keyB64, gated: false, sepoliaTx: "0x2", reason: "TIMER" } });
   gatedReleased = mkSeal("Only for India 🇮🇳", { audience: "GATED", countries: ["IN"] });
   addFix("gatedReleased", gatedReleased, "RELEASED", { release: { releasedAt: now(), gated: true, sepoliaTx: "0x3", reason: "TIMER" } });
+  // hidden posts (cover phrases): no card until opened
+  addFix("hSealed", mkSeal("hidden sealed", {}), "ARMED");
+  addFix("hDisarmed", mkSeal("hidden never", {}), "DISARMED", { disarm: { at: now() } });
+  addFix("hReleasing", mkSeal("hidden soon", { releaseAt: now() - 5 }), "RELEASING");
+  const hPub = mkSeal("Hidden public secret 🌙", {});
+  addFix("hReleased", hPub, "RELEASED", { release: { releasedAt: now(), releasedKeyB64: hPub.keyB64, gated: false, sepoliaTx: "0x4", reason: "TIMER" } });
+  const hRd = mkSeal("Hidden on Reddit", {});
+  addFix("hReddit", hRd, "RELEASED", { release: { releasedAt: now(), releasedKeyB64: hRd.keyB64, gated: false, sepoliaTx: "0x5", reason: "TIMER" } });
+  hFlipSeal = mkSeal("Flipped secret: it fired", {});
+  addFix("hFlip", hFlipSeal, "ARMED");
   const byId = new Map(Object.values(fixtures).map((f) => [f.id, f]));
 
   const server = createServer(async (req, res) => {
@@ -104,9 +115,10 @@ function startApi(): Promise<Server> {
       return res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(`<!doctype html><title>arm</title><div id=s>arming</div><script>
         const d = JSON.parse(atob(location.hash.slice(3).replace(/-/g,'+').replace(/_/g,'/')));
         window.__draft = d;
-        setTimeout(() => window.postMessage({source:'iigs-web',type:'IIGS_ARMED',sealId:d.sealId,ownerNullifier:'mock:n',post:${JSON.stringify("__POST__")}.replace('__POST__','🔒 Sealed by a verified human · opens soon · '+location.origin+'/s/'+d.sealId+' ⟦IIGS:'+d.sealId+'⟧')}, location.origin), 300);
+        fetch('/cover/'+d.sealId).then(r=>r.text()).then(post => setTimeout(() => window.postMessage({source:'iigs-web',type:'IIGS_ARMED',sealId:d.sealId,ownerNullifier:'mock:n',post}, location.origin), 300));
       </script>`);
     }
+    if (url.pathname.startsWith("/cover/")) return res.writeHead(200, { "content-type": "text/plain; charset=utf-8" }).end(encodeCover(url.pathname.slice(7)));
     if (url.pathname === "/verify-reader")
       return res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(`<!doctype html><title>verify</title><button id=go onclick="window.postMessage({source:'iigs-web',type:'IIGS_READER_TOKEN',token:'tok-IN',nationality:'IN',expiresAt:Math.floor(Date.now()/1000)+43200},location.origin)">verify</button>`);
     if (url.pathname === "/vault") return res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end("<title>vault</title>vault");
@@ -129,7 +141,15 @@ function startFixture(): Promise<Server> {
   <div id="composer" data-testid="tweetTextarea_0" contenteditable="true" role="textbox" style="border:1px solid #888;min-height:40px"></div>
   <script>setTimeout(()=>{const a=document.createElement('article');a.innerHTML='<div data-testid="tweetText"><span>late tweet ${post("disarmed")}</span></div>';document.getElementById('timeline').append(a)},2500)</script>
   </body></html>`;
-  const server = createServer((_q, res) => res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(html));
+  const hid = (name: string) =>
+    `<article data-testid="tweet"><div data-testid="User-Name">someone</div><div data-testid="tweetText" id="h-${name}"><span>${encodeCover(fixtures[name]!.id)}</span></div></article>`;
+  const hidden = `<!doctype html><html><body style="background:#000;color:#eee;font-family:sans-serif"><div id="timeline">
+    ${hid("hSealed")}${hid("hDisarmed")}${hid("hReleasing")}${hid("hReleased")}${hid("hFlip")}
+    <article data-testid="tweet"><div data-testid="tweetText" id="h-normal"><span>Quiet rivers wander slowly beneath the old bridge.</span></div></article>
+  </div>
+  <shreddit-post><a slot="title" id="post-title-t3_9">${encodeCover(fixtures.hReddit!.id)}</a></shreddit-post>
+  </body></html>`;
+  const server = createServer((q, res) => res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(q.url === "/hidden" ? hidden : html));
   return new Promise((r) => server.listen(4010, () => r(server)));
 }
 
@@ -212,6 +232,61 @@ describe("social content script", () => {
   });
 });
 
+describe("hidden posts (cover phrases)", () => {
+  let page: Page;
+  /** What the extension added after a post: null = nothing visible. */
+  const shown = (sel: string) =>
+    page.evaluate((sel) => {
+      const host = document.querySelector(sel)?.nextElementSibling as HTMLElement | null;
+      if (!host?.hasAttribute("data-iigs-card") || host.style.display === "none") return null;
+      return host.shadowRoot?.textContent ?? "";
+    }, sel);
+
+  it("opened hidden posts show the decrypted text under the post; sealed / cancelled / releasing ones show nothing", async () => {
+    page = await ctx.newPage();
+    await page.goto(`${FIX}/hidden`);
+    await expect.poll(() => shown("#h-hReleased"), { timeout: 15000 }).toContain("Hidden public secret 🌙");
+    await expect.poll(() => shown("#post-title-t3_9"), { timeout: 15000 }).toContain("Hidden on Reddit");
+    expect(await page.evaluate(() => document.querySelector("#post-title-t3_9")!.nextElementSibling!.getAttribute("slot"))).toBe("title");
+    for (const name of ["hSealed", "hDisarmed", "hReleasing", "hFlip", "normal"]) expect(await shown(`#h-${name}`), name).toBeNull();
+    // the post text itself is untouched
+    expect(await page.textContent("#h-hSealed")).toBe(encodeCover(fixtures.hSealed!.id));
+  });
+
+  it("a hidden post that fires later opens on 'Scan this page'", async () => {
+    const tabId = await sw.evaluate(async () => (await chrome.tabs.query({ url: "http://localhost:4010/hidden" }))[0]!.id!);
+    const before = await sw.evaluate((tid) => chrome.tabs.sendMessage(tid, { type: "iigs-scan" }), tabId);
+    expect(before).toEqual({ found: 6, opened: 2, decrypted: 2 });
+    expect(await shown("#h-hFlip")).toBeNull();
+    // the seal fires: Chainlink CRE released it and the mirror published the key
+    const f = fixtures.hFlip!.json;
+    f.status = "RELEASED";
+    f.nextDeadline = null;
+    f.release = { releasedAt: now(), releasedKeyB64: hFlipSeal.keyB64, gated: false, sepoliaTx: "0x6", reason: "TIMER" };
+    const after = await sw.evaluate((tid) => chrome.tabs.sendMessage(tid, { type: "iigs-scan" }), tabId);
+    expect(after).toEqual({ found: 6, opened: 3, decrypted: 3 });
+    expect(await shown("#h-hFlip")).toContain("Flipped secret: it fired");
+    for (const name of ["hSealed", "hDisarmed", "hReleasing"]) expect(await shown(`#h-${name}`), name).toBeNull();
+  });
+
+  it("popup 'Scan this page' button reports what opened", async () => {
+    const tabId = await sw.evaluate(async () => (await chrome.tabs.query({ url: "http://localhost:4010/hidden" }))[0]!.id!);
+    const popup = await ctx.newPage();
+    await popup.goto(`chrome-extension://${extId}/popup.html`);
+    // the popup scans the active tab of its window: make the timeline tab active again (same window)
+    const sameWindow = await sw.evaluate(async ([tid, ext]) => {
+      const pop = (await chrome.tabs.query({ url: `chrome-extension://${ext}/popup.html` }))[0]!;
+      const t = await chrome.tabs.get(tid);
+      await chrome.tabs.update(tid, { active: true });
+      return pop.windowId === t.windowId;
+    }, [tabId, extId] as const);
+    expect(sameWindow).toBe(true);
+    await popup.click("[data-testid=scan-page]");
+    await expect.poll(() => popup.textContent("[data-testid=scan-result]").catch(() => null), { timeout: 10000 }).toContain("Opened 3 sealed posts");
+    await popup.close();
+  });
+});
+
 describe("compose → arm → insert", () => {
   it("popup UI: seals on-device and opens /arm#d=… with a valid draft; bridge stores the armed post", async () => {
     const popup = await ctx.newPage();
@@ -235,7 +310,7 @@ describe("compose → arm → insert", () => {
     await expect.poll(async () => (await sw.evaluate(() => chrome.storage.local.get("mine"))).mine?.length ?? 0, { timeout: 8000 }).toBeGreaterThan(0);
     const mine = (await sw.evaluate(() => chrome.storage.local.get("mine"))).mine[0];
     expect(mine.sealId).toBe(draft.sealId);
-    expect(mine.post).toContain(`⟦IIGS:${draft.sealId}⟧`);
+    expect(mine.post).toBe(encodeCover(draft.sealId)); // the hidden cover phrase, nothing else
     armedPosts.push(mine.post);
     await arm.close();
     await popup.close();
@@ -255,7 +330,7 @@ describe("compose → arm → insert", () => {
     }, [s.draft, tabId] as const);
     const bridgePage = await ctx.newPage();
     await bridgePage.goto(`${API}/arm#d=${Buffer.from(JSON.stringify(s.draft)).toString("base64url")}`);
-    await expect.poll(async () => page.evaluate(() => document.getElementById("composer")!.textContent), { timeout: 10000 }).toContain(`⟦IIGS:${s.draft.sealId}⟧`);
+    await expect.poll(async () => page.evaluate(() => document.getElementById("composer")!.textContent), { timeout: 10000 }).toContain(encodeCover(s.draft.sealId));
     expect((await sw.evaluate(() => chrome.storage.local.get("pending"))).pending ?? null).toBeNull();
     // and the popup's "Insert into current page" path
     await page.evaluate(() => (document.getElementById("composer")!.textContent = ""));
@@ -268,7 +343,7 @@ describe("compose → arm → insert", () => {
     const popup = await ctx.newPage();
     await popup.goto(`chrome-extension://${extId}/popup.html`);
     await popup.locator("text=My sealed posts").waitFor({ timeout: 5000 });
-    await popup.locator("text=Copy sealed text").first().waitFor({ timeout: 5000 });
+    await popup.locator("text=Copy hidden post").first().waitFor({ timeout: 5000 });
     await popup.locator("text=Verify nationality").waitFor({ timeout: 5000 });
     await popup.locator(".status", { hasText: "ARMED" }).first().waitFor({ timeout: 1000 }).catch(() => {});
     await popup.close();

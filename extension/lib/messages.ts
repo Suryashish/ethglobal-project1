@@ -38,5 +38,7 @@ export function send<M extends Msg>(msg: M): Promise<MsgReply[M["type"]]> {
   return browser.runtime.sendMessage(msg) as Promise<MsgReply[M["type"]]>;
 }
 
-export type TabMsg = { type: "iigs-insert"; text: string };
+export type TabMsg = { type: "iigs-insert"; text: string } | { type: "iigs-scan" };
+/** Reply to "iigs-scan": seals referenced on the page, how many have opened, how many were decrypted here. */
+export type ScanSummary = { found: number; opened: number; decrypted: number };
 export type { MyPost };

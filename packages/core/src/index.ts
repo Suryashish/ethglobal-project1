@@ -1,4 +1,5 @@
 export * from "./bytes.js";
+export * from "./cover.js";
 export * from "./crypto.js";
 export * from "./envelope.js";
 export * from "./ids.js";

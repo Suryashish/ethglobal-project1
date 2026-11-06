@@ -102,7 +102,7 @@ export function SealReader({ id }: { id: string }) {
       {justArmed && mine ? (
         <Card className="border-sealed/40 bg-sealed/5">
           <p className="font-medium text-sealed">Armed. The switch is live.</p>
-          <p className="mt-1 text-sm text-muted">Share the link or the sealed post below. Keep this device: it is how you find your seal in the Vault.</p>
+          <p className="mt-1 text-sm text-muted">Post the hidden text below on X or Reddit, or share the link. Keep this device: it is how you find your seal in the Vault.</p>
         </Card>
       ) : null}
 

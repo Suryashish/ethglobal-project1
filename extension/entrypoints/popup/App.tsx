@@ -3,7 +3,7 @@ import { browser } from "wxt/browser";
 import { InlineTooLongError, buildDraft } from "../../lib/compose";
 import { COUNTRIES, flag, label } from "../../lib/countries";
 import { expiresAtMs, formatCountdown, formatDuration, nowSec } from "../../lib/format";
-import { send } from "../../lib/messages";
+import { send, type ScanSummary, type TabMsg } from "../../lib/messages";
 import { DEFAULT_BASE_URL, get, set, type MyPost, type ReaderToken } from "../../lib/storage";
 import type { WireState } from "../../lib/wire";
 
@@ -37,6 +37,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [scanMsg, setScanMsg] = useState("");
 
   const [mine, setMine] = useState<MyPost[]>([]);
   const [states, setStates] = useState<Record<string, WireState | null>>({});
@@ -95,19 +97,45 @@ export default function App() {
     }
   }
 
+  /** Asks the X / Reddit tab to find hidden posts, refresh them and decrypt the ones that have opened. */
+  async function scanPage() {
+    setScanning(true);
+    setScanMsg("");
+    try {
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id == null) throw new Error("no tab");
+      const r = (await browser.tabs.sendMessage(tab.id, { type: "iigs-scan" } satisfies TabMsg)) as ScanSummary | undefined;
+      if (!r) throw new Error("no reply");
+      const plural = (n: number) => (n === 1 ? "" : "s");
+      if (!r.opened) setScanMsg("No opened sealed posts on this page.");
+      else {
+        const waiting = r.opened - r.decrypted;
+        setScanMsg(
+          `Opened ${r.opened} sealed post${plural(r.opened)}` +
+            (r.decrypted ? ` — the message is shown under ${r.decrypted === 1 ? "it" : "each one"}.` : ".") +
+            (waiting ? ` ${waiting} need${waiting === 1 ? "s" : ""} nationality verification or is still decrypting.` : ""),
+        );
+      }
+    } catch {
+      setScanMsg("Open X or Reddit, then scan.");
+    } finally {
+      setScanning(false);
+    }
+  }
+
   async function insert(post: string) {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     const r = await send({ type: "insert", text: post, tabId: tab?.id });
     if (r.ok && r.inserted) setInfo("Inserted into the page.");
     else {
       await navigator.clipboard.writeText(post).catch(() => {});
-      setInfo("Could not insert — sealed post copied, paste it.");
+      setInfo("Could not insert — hidden post copied, paste it.");
     }
   }
 
   async function copy(post: string) {
     await navigator.clipboard.writeText(post);
-    setInfo("Sealed post copied.");
+    setInfo("Hidden post copied.");
   }
 
   async function saveBase() {
@@ -133,6 +161,17 @@ export default function App() {
     <>
       <h1>🔒 Silent Seal</h1>
       <div className="sub">Seal a post. It opens at a set time unless you disarm it.</div>
+
+      <section>
+        <h2>Read hidden posts</h2>
+        <div className="sub">Sealed posts look like ordinary text. Once one opens, its message appears right under it.</div>
+        <div style={{ marginTop: 8 }} className="row">
+          <button data-testid="scan-page" disabled={scanning} onClick={scanPage}>
+            {scanning ? "Scanning…" : "Scan this page"}
+          </button>
+        </div>
+        {scanMsg && <div className="okmsg" data-testid="scan-result">{scanMsg}</div>}
+      </section>
 
       <section>
         <h2>New sealed post</h2>
@@ -205,7 +244,7 @@ export default function App() {
               </div>
               {s?.status === "ARMED" && s.nextDeadline && <div className="sub">opens in {formatCountdown(s.nextDeadline - nowSec())}</div>}
               <div className="row" style={{ marginTop: 4 }}>
-                <button className="ghost small" onClick={() => copy(p.post)}>Copy sealed text</button>
+                <button className="ghost small" onClick={() => copy(p.post)}>Copy hidden post</button>
                 <button className="ghost small" onClick={() => insert(p.post)}>Insert into current page</button>
               </div>
             </div>

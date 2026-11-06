@@ -1,12 +1,11 @@
 "use client";
-import { formatSealedPost, fromBase64, validateDraft, type SealDraft } from "@iigs/core";
+import { encodeCover, fromBase64, validateDraft, type SealDraft } from "@iigs/core";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArmPanel, type ArmResult } from "@/components/ArmPanel";
-import { CopyButton } from "@/components/CopyButton";
+import { ShareButtons } from "@/components/ShareButtons";
 import { buttonStyles } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { getConfig } from "@/lib/client/config";
 
 function readDraft(): { draft?: SealDraft; error?: string } {
   try {
@@ -26,10 +25,9 @@ export function ArmFromExtension() {
 
   useEffect(() => setState(readDraft()), []);
 
-  async function onArmed(res: ArmResult) {
-    const d = state!.draft!;
-    const cfg = await getConfig();
-    const post = formatSealedPost({ sealId: d.sealId, baseUrl: cfg.baseUrl, releaseAt: d.releaseAt, countries: d.countries });
+  function onArmed(res: ArmResult) {
+    // The post is the cover phrase: an ordinary-looking text that hides the seal id (decoded by the extension).
+    const post = encodeCover(res.sealId);
     setArmed({ res, post });
     window.postMessage(
       { source: "iigs-web", type: "IIGS_ARMED", sealId: res.sealId, ownerNullifier: res.ownerNullifier, post },
@@ -46,9 +44,9 @@ export function ArmFromExtension() {
       {armed ? (
         <Card className="space-y-4 border-sealed/40">
           <p className="font-medium text-sealed">Armed. Go back to the extension: your post is ready to insert.</p>
-          <p className="break-words rounded-md border border-line bg-bg p-3 text-sm">{armed.post}</p>
+          <p data-cover-phrase className="break-words rounded-md border border-line bg-bg p-3 text-sm">{armed.post}</p>
+          <ShareButtons phrase={armed.post} />
           <div className="flex flex-wrap gap-2">
-            <CopyButton text={armed.post} label="Copy post" />
             <Link href={`/s/${armed.res.sealId}`} className={buttonStyles({ size: "sm" })}>View seal</Link>
             <Link href="/vault" className={buttonStyles({ size: "sm", variant: "ghost" })}>Open vault</Link>
           </div>
