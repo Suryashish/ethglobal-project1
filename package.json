@@ -1,0 +1,14 @@
+{
+  "name": "if-i-go-silent",
+  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "packageManager": "pnpm@11.9.0",
+  "engines": { "node": ">=22.10" },
+  "scripts": {
+    "dev:web": "pnpm --filter @iigs/frontend dev",
+    "dev:ext": "pnpm --filter @iigs/extension dev",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck"
+  }
+}

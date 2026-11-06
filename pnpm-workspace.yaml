@@ -1,0 +1,7 @@
+packages:
+  - frontend
+  - extension
+  - worker
+  - packages/*
+allowBuilds:
+  esbuild: set this to true or false

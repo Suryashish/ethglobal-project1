@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+dist/
+.output/
+.wxt/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+contract/out/
+contract/cache/
+contract/broadcast/*/31337/
+workflows/**/node_modules/
+workflows/**/*.wasm
+.DS_Store
+.secrets/
