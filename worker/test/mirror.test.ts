@@ -78,6 +78,20 @@ describe("syncOnce", () => {
     await syncOnce(h2.deps, st);
     expect(h2.written).toHaveLength(1);
   });
+  it("stays `confirmations` blocks behind the head, then picks the event up once it is deep enough", async () => {
+    const h = harness([pub(99n, "late")], 100n);
+    h.deps.confirmations = 2;
+    const r = await syncOnce(h.deps, newMirrorState(50));
+    expect(r.head).toBe(98n);
+    expect(h.calls.every(([, to]) => to <= 98n)).toBe(true); // never queries the RPC's head blocks
+    expect(h.written).toHaveLength(0); // block 99 not yet deep enough
+    expect(h.cursor()).toEqual({ nextBlock: 99 });
+    const h2 = harness([pub(99n, "late")], 101n);
+    h2.deps.confirmations = 2;
+    h2.deps.saveCursor({ nextBlock: 99 });
+    await syncOnce(h2.deps, newMirrorState(50));
+    expect(h2.written.map((w) => w.sealId)).toEqual(["late"]);
+  });
   it("resumes from cursor", async () => {
     const h = harness([pub(10n, "a")]);
     h.deps.saveCursor({ nextBlock: 90 });

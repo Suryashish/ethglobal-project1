@@ -41,6 +41,23 @@ const proof = (kind: "owner" | "reader", signal: string, identity = "author", na
 });
 
 const cfg = (await get("/api/config")).json;
+/** Fetch our ciphertext from Swarm like the reader does: gateway first, then our /api/swarm proxy; status-checked, retried. */
+async function swarmBytes(ref: string): Promise<Uint8Array | null> {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    for (const url of [`${cfg.swarmGateway}/bytes/${ref}`, `${BASE}/api/swarm/${ref}`]) {
+      try {
+        const r = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+        if (r.ok) return new Uint8Array(await r.arrayBuffer());
+        console.log(`  swarm read ${url.includes("/api/") ? "proxy" : "gateway"} → HTTP ${r.status}`);
+      } catch (e) {
+        console.log(`  swarm read failed: ${(e as Error).message}`);
+      }
+    }
+    await sleep(3000 * attempt);
+  }
+  return null;
+}
+
 console.log(`stack: dep=${cfg.dep} arkiv=${cfg.arkivRpcUrl || "rabdi"} contract=${cfg.silentReleaseAddress}`);
 
 async function arm(content: Parameters<typeof createSeal>[0]["content"], rule: any, audience: "PUBLIC" | "GATED", countries: string[] = []) {
@@ -116,9 +133,12 @@ if (sa?.release?.releasedKeyB64) {
 const sc = final.get(C.sealId);
 check("C released at timer", sc?.status === "RELEASED");
 if (sc?.release?.releasedKeyB64) {
-  const ct = new Uint8Array(await (await fetch(`${cfg.swarmGateway}/bytes/${sc.seal.swarmRef}`)).arrayBuffer());
+  const ct = await swarmBytes(sc.seal.swarmRef);
+  check("C ciphertext retrievable from Swarm", ct !== null, ct ? "" : "Swarm gateway unavailable");
+  if (ct) {
   const env = openSeal({ sealId: C.sealId, key: fromBase64(sc.release.releasedKeyB64), ciphertext: ct, contentHash: sc.seal.contentHash });
   check("C file from Swarm decrypts byte-identical", env.header.kind === "file" && (env.header as any).name === "evidence.pdf" && Buffer.compare(Buffer.from(env.body), Buffer.from(fileC)) === 0);
+  }
 }
 
 // B: gated — key never published
@@ -131,9 +151,12 @@ check("B: US reader refused", kUS.status === 403 && kUS.json?.error === "not_in_
 const kIN = await post("/api/reader/key", { sealId: B.sealId, token: tokIN });
 check("B: IN reader gets the key", kIN.status === 200 && !!kIN.json?.keyB64, `${kIN.status}`);
 if (kIN.json?.keyB64 && sb) {
-  const ct = new Uint8Array(await (await fetch(`${cfg.swarmGateway}/bytes/${sb.seal.swarmRef}`)).arrayBuffer());
+  const ct = await swarmBytes(sb.seal.swarmRef);
+  check("B ciphertext retrievable from Swarm", ct !== null, ct ? "" : "Swarm gateway unavailable");
+  if (ct) {
   const env = openSeal({ sealId: B.sealId, key: fromBase64(kIN.json.keyB64), ciphertext: ct, contentHash: sb.seal.contentHash });
   check("B decrypts byte-identical for IN reader", Buffer.compare(Buffer.from(env.body), Buffer.from(fileA)) === 0);
+  }
 }
 const kPublicA = await post("/api/reader/key", { sealId: A.sealId, token: tokIN });
 check("reader/key refuses non-gated seals", kPublicA.status >= 400);
