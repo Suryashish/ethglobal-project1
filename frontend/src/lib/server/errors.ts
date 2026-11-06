@@ -30,9 +30,37 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
   };
 }
 
+/** Largest JSON body any route accepts (an inline draft is ~12 KB; 64 KB leaves room, blocks memory/gas abuse). */
+export const MAX_JSON_BYTES = 64 * 1024;
+
+/** Reads at most `max` bytes of the body; throws 413 beyond that (checks Content-Length first, then while streaming). */
+export async function readBodyCapped(req: Request, max: number): Promise<Uint8Array> {
+  const declared = Number(req.headers.get("content-length") ?? "NaN");
+  if (Number.isFinite(declared) && declared > max) throw new ApiError(413, "too_large", `request body exceeds ${max} bytes`);
+  if (!req.body) return new Uint8Array();
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      throw new ApiError(413, "too_large", `request body exceeds ${max} bytes`);
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let o = 0;
+  for (const c of chunks) { out.set(c, o); o += c.length; }
+  return out;
+}
+
 export async function readJson(req: Request): Promise<Record<string, unknown>> {
+  const raw = await readBodyCapped(req, MAX_JSON_BYTES);
   try {
-    const body = await req.json();
+    const body = JSON.parse(new TextDecoder().decode(raw));
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("not an object");
     return body as Record<string, unknown>;
   } catch {

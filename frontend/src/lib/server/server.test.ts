@@ -167,8 +167,9 @@ describe("assertActionAllowed", () => {
     expect(codes(() => assertActionAllowed("checkin", stateOf({ kind: "TIMER", intervalSec: 0 })))).toBe("no_heartbeat");
     expect(codes(() => assertActionAllowed("checkin", stateOf({}, "RELEASING")))).toBe("seal_releasing");
   });
-  it("allows disarm while RELEASING", () => {
-    expect(codes(() => assertActionAllowed("disarm", stateOf({}, "RELEASING")))).toBeNull();
+  it("refuses disarm once the rule fired (RELEASING): nobody can stop a release in flight, not even under coercion", () => {
+    expect(codes(() => assertActionAllowed("disarm", stateOf({}, "RELEASING")))).toBe("seal_releasing");
+    expect(codes(() => assertActionAllowed("disarm", stateOf({}, "ARMED")))).toBeNull();
   });
   it("extend must be later than current releaseAt and only for timer seals", () => {
     const st = stateOf({ releaseAt: NOW + 1000 });
@@ -215,7 +216,7 @@ describe("gated key release", () => {
   const secret = new Uint8Array(32).fill(9);
   const gatedState = (status: SealState["status"] = "RELEASED", released = true) =>
     stateOf(
-      { audience: "GATED", countries: ["IN", "MT"] },
+      { audience: "GATED", countries: ["IN", "MT"], releaseAt: NOW - 10 }, // its timer has fired
       status,
       released ? { entityKey: "0x1", sealId: "aaaaaaaaaaaaaaaa", releasedAt: NOW, gated: true, sepoliaTx: "", reason: "TIMER" } : null,
     );
@@ -238,6 +239,15 @@ describe("gated key release", () => {
     expect(code(() => checkGatedRelease(gatedState(), tok("IN"), secret, { nowSec: NOW + 13 * 3600 }))).toBe("401:token_expired");
     expect(code(() => checkGatedRelease(stateOf(), tok("IN"), secret, { nowSec: NOW }))).toBe("400:not_gated");
   });
+  it("refuses a release claim when the seal's own rule has not fired (forged / premature on-chain release)", () => {
+    const notDue = stateOf(
+      { audience: "GATED", countries: ["IN"], releaseAt: NOW + 3600 },
+      "RELEASED",
+      { entityKey: "0x1", sealId: "aaaaaaaaaaaaaaaa", releasedAt: NOW, gated: true, sepoliaTx: "", reason: "TIMER" },
+    );
+    expect(code(() => checkGatedRelease(notDue, tok("IN"), secret, { nowSec: NOW }))).toBe("409:not_released");
+    expect(code(() => checkGatedRelease({ ...notDue, release: null }, tok("IN"), secret, { chainReleased: true, nowSec: NOW }))).toBe("409:not_released");
+  });
   it("accepts an on-chain release when the Arkiv mirror lags", () => {
     expect(code(() => checkGatedRelease(gatedState("ARMED", false), tok("MT"), secret, { chainReleased: true, nowSec: NOW }))).toBeNull();
   });
@@ -253,7 +263,7 @@ describe("gated key release", () => {
       gatedPublicKey: gated.publicKey,
       source: "vault",
     });
-    const key = unwrapKey(wrapKey(out.key, gated.publicKey), gated.secretKey);
+    const key = unwrapKey(wrapKey(out.key, gated.publicKey, out.draft.sealId), gated.secretKey, out.draft.sealId);
     expect(key).toEqual(out.key);
     const env = openSeal({ sealId: out.draft.sealId, key, ciphertext: out.ciphertext, contentHash: out.draft.contentHash });
     expect(new TextDecoder().decode(env.body)).toBe("secret for Indians");

@@ -14,6 +14,6 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   assertSameHuman(humanId, state);
 
   assertActionAllowed("checkin", state);
-  const r = await checkin(id, state.seal.intervalSec);
+  const r = await checkin(state.seal);
   return Response.json({ ok: true, at: r.at, expiresAtSec: r.expiresAtSec, txHash: r.txHash });
 });

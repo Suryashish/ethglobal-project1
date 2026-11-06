@@ -2,7 +2,7 @@
  * Owner-action authorisation. A proof must (1) commit to the EXACT expected signal for this action,
  * seal and extra, (2) be fresh, (3) verify with World, and (4) belong to the human who armed the seal.
  */
-import { draftDigest, isFresh, ownerSignal, parseSignal, readerSignal } from "@iigs/core";
+import { draftDigest, isFresh, MAX_SEAL_DAYS, ownerSignal, parseSignal, readerSignal } from "@iigs/core";
 import type { OwnerAction, SealDraft, SealState } from "@iigs/core";
 import { verifyOwnerProof, verifyReaderProof } from "@iigs/world/server";
 import type { WorldProofEnvelope } from "@iigs/world";
@@ -82,10 +82,12 @@ export function assertActionAllowed(
   const now = opts.nowSec ?? Math.floor(Date.now() / 1000);
   if (status === "DISARMED") throw new ApiError(409, "seal_disarmed", "This seal was cancelled; it can never open.");
   if (status === "RELEASED") throw new ApiError(409, "seal_released", "This seal has already been released.");
-  if (action === "disarm") return; // ARMED or RELEASING (the rule fired but nothing is on-chain yet)
+  // Once the rule has fired nothing can stop the release — not even the author. Otherwise someone could
+  // coerce the author into disarming in the window before Chainlink CRE writes the release on-chain.
   if (status === "RELEASING") {
     throw new ApiError(409, "seal_releasing", "The release rule has already fired; waiting for the Chainlink CRE release.");
   }
+  if (action === "disarm") return;
   if (action === "checkin" && seal.intervalSec <= 0) {
     throw new ApiError(409, "no_heartbeat", "This seal has no heartbeat to renew.");
   }
@@ -97,7 +99,9 @@ export function assertActionAllowed(
     if (!Number.isInteger(r) || (r as number) <= seal.releaseAt || (r as number) <= now) {
       throw new ApiError(400, "bad_release_at", "The new time must be later than the current release time.");
     }
-    if ((r as number) > now + 180 * 86400) throw new ApiError(400, "bad_release_at", "The new time is too far away (max 180 days).");
+    if ((r as number) > now + MAX_SEAL_DAYS * 86400) {
+      throw new ApiError(400, "bad_release_at", `The new time is too far away (max ${MAX_SEAL_DAYS} days).`);
+    }
   }
 }
 

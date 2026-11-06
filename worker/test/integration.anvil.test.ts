@@ -51,6 +51,7 @@ describe("anvil end-to-end", () => {
       chain: viemChainReader(RPC, addr),
       arkiv: {
         has: async (id: string) => store.has(id),
+        verify: async () => ({ ok: true as const }),
         write: async (r: ReleaseWrite) => { store.set(r.sealId, r); return { entityKey: "0xe", txHash: "0xt" }; },
       },
       log: () => {}, startBlock: 0,

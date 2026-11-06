@@ -41,7 +41,24 @@ beforeEach(() => { _resetWorldState(); setEnv("mock"); });
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("mock mode", () => {
-  it("defaults to mock", () => { delete process.env.WORLD_MODE; expect(worldMode()).toBe("mock"); });
+  it("defaults to mock on dev deployments", () => { delete process.env.WORLD_MODE; expect(worldMode()).toBe("mock"); });
+  it("fails closed: the simulator is refused outside dev/local/test deployments", () => {
+    const dep = process.env.IIGS_DEP;
+    try {
+      process.env.IIGS_DEP = "demo";
+      delete process.env.WORLD_MODE;
+      expect(() => worldMode()).toThrow(/not allowed/);
+      process.env.WORLD_MODE = "mock";
+      expect(() => worldMode()).toThrow(/not allowed/);
+      process.env.WORLD_MODE = "liev"; // typo must not fall back to mock
+      expect(() => worldMode()).toThrow(/not allowed/);
+      process.env.WORLD_MODE = "live";
+      expect(worldMode()).toBe("live");
+    } finally {
+      if (dep === undefined) delete process.env.IIGS_DEP; else process.env.IIGS_DEP = dep;
+      delete process.env.WORLD_MODE;
+    }
+  });
   it("author gets a stable humanId, thief a different one", async () => {
     const a1 = await verifyOwnerProof(mock("owner", "author"), SIGNAL);
     const a2 = await verifyOwnerProof(mock("owner", "author", SIGNAL), SIGNAL);
@@ -143,7 +160,8 @@ describe("live mode", () => {
 
   it("reader: attested nationality passes; humanId from nullifier", async () => {
     const f = okFetch(); vi.stubGlobal("fetch", f);
-    const r = await verifyReaderProof(live("reader", readerResult(), RSIGNAL, { nationality: "IN" }), RSIGNAL);
+    const ctx = await createRpContext("reader", RSIGNAL, { nationality: "IN" });
+    const r = await verifyReaderProof(live("reader", readerResult({ nonce: ctx!.nonce }), RSIGNAL, { nationality: "IN" }), RSIGNAL);
     expect(r).toEqual({ ok: true, humanId: "world:16", nationality: "IN" });
     expect(JSON.parse(String((f.mock.calls[0] as unknown as [string, RequestInit])[1].body)).action).toBe("iigs-reader");
   });
@@ -158,12 +176,22 @@ describe("live mode", () => {
   it("reader: unsigned signal falls back to issued-nonce binding", async () => {
     process.env.WORLD_MODE = "live";
     vi.stubGlobal("fetch", okFetch());
-    const ctx = await createRpContext("reader", RSIGNAL);
+    const ctx = await createRpContext("reader", RSIGNAL, { nationality: "IN" });
     const res = readerResult({ nonce: ctx!.nonce });
     (res.responses[0] as Record<string, unknown>).signal_hash = "0x0";
     expect((await verifyReaderProof(live("reader", res, RSIGNAL, { nationality: "IN" }), RSIGNAL)).ok).toBe(true);
     const res2 = readerResult(); (res2.responses[0] as Record<string, unknown>).signal_hash = "0x0";
     expect(await verifyReaderProof(live("reader", res2, RSIGNAL, { nationality: "IN" }), RSIGNAL)).toMatchObject({ code: "signal_mismatch" });
+  });
+
+  it("reader nationality is bound to the issued request: prove one nationality, claim another -> nationality_mismatch", async () => {
+    vi.stubGlobal("fetch", okFetch());
+    const us = await createRpContext("reader", RSIGNAL, { nationality: "US" });
+    expect(await verifyReaderProof(live("reader", readerResult({ nonce: us!.nonce }), RSIGNAL, { nationality: "IN" }), RSIGNAL)).toMatchObject({ code: "nationality_mismatch" });
+  });
+  it("reader: a nonce we never issued -> refused", async () => {
+    vi.stubGlobal("fetch", okFetch());
+    expect((await verifyReaderProof(live("reader", readerResult(), RSIGNAL, { nationality: "IN" }), RSIGNAL)).ok).toBe(false);
   });
 });
 

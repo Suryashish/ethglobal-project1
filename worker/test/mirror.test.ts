@@ -15,7 +15,7 @@ const gated = (n: bigint, id: string): ReleaseLog => ({
   eventName: "ReleasedGated", args: { sealId: id }, transactionHash: "0xtx2", blockNumber: n,
 });
 
-function harness(logs: ReleaseLog[], head = 100n, opts: { failRanges?: (from: bigint, to: bigint) => boolean; existing?: string[]; writeFail?: number } = {}) {
+function harness(logs: ReleaseLog[], head = 100n, opts: { failRanges?: (from: bigint, to: bigint) => boolean; existing?: string[]; writeFail?: number; forged?: Set<string> } = {}) {
   const written: ReleaseWrite[] = [];
   const calls: [bigint, bigint][] = [];
   let cursor: { nextBlock: number } | null = null;
@@ -34,6 +34,7 @@ function harness(logs: ReleaseLog[], head = 100n, opts: { failRanges?: (from: bi
     chain, log: () => {}, startBlock: 0, initialChunk: 50, minChunk: 5, retryBaseMs: 0, sleepFn: async () => {},
     arkiv: {
       has: async (id) => existing.has(id),
+      verify: async (r) => (opts.forged?.has(r.sealId) ? { ok: false as const, reason: "forged" } : { ok: true as const }),
       write: async (r) => {
         if (wf-- > 0) throw new Error("no funds");
         written.push(r); existing.add(r.sealId);
@@ -91,6 +92,13 @@ describe("syncOnce", () => {
     h2.deps.saveCursor({ nextBlock: 99 });
     await syncOnce(h2.deps, newMirrorState(50));
     expect(h2.written.map((w) => w.sealId)).toEqual(["late"]);
+  });
+  it("a release that fails verification (forged event) is refused: never written, cursor still advances", async () => {
+    const h = harness([pub(10n, "real"), pub(11n, "forged")], 100n, { forged: new Set(["forged"]) });
+    const r = await syncOnce(h.deps, newMirrorState(50));
+    expect(h.written.map((w) => w.sealId)).toEqual(["real"]);
+    expect(r.written).toBe(1);
+    expect(h.cursor()?.nextBlock).toBeGreaterThan(11);
   });
   it("resumes from cursor", async () => {
     const h = harness([pub(10n, "a")]);

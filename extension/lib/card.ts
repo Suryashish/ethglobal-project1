@@ -1,7 +1,7 @@
 import { formatCountdown } from "./format";
 import type { WireState } from "./wire";
 
-export type ReaderCtx = { token: string; nationality: string; expiresAtMs: number } | null;
+export type ReaderCtx = { nationality: string; expiresAtMs: number } | null;
 
 export type CardModel =
   | { kind: "missing" }

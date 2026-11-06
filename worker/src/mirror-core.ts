@@ -64,6 +64,11 @@ export type ChainReader = {
 
 export type ArkivSink = {
   has(sealId: string): Promise<boolean>;
+  /**
+   * Checks a release BEFORE it is mirrored: the seal exists, its own rule has fired, and (public seals) the
+   * published key really decrypts its ciphertext. A forged chain event is refused, never written to Arkiv.
+   */
+  verify(r: ReleaseWrite): Promise<{ ok: true } | { ok: false; reason: string }>;
   write(r: ReleaseWrite): Promise<{ entityKey: string; txHash: string }>;
 };
 
@@ -83,10 +88,10 @@ export type MirrorDeps = {
   retryBaseMs?: number;
 };
 
-export type MirrorState = { chunk: number; mirrored: Set<string> };
+export type MirrorState = { chunk: number; mirrored: Set<string>; rejected: Set<string> };
 
 export function newMirrorState(initialChunk = 5000): MirrorState {
-  return { chunk: initialChunk, mirrored: new Set() };
+  return { chunk: initialChunk, mirrored: new Set(), rejected: new Set() };
 }
 
 const short = (s: string) => (s.length > 10 ? `${s.slice(0, 8)}…` : s);
@@ -98,6 +103,14 @@ export async function mirrorEvent(deps: MirrorDeps, st: MirrorState, log: Releas
     st.mirrored.add(rec.sealId);
     deps.log(`[mirror] ${short(rec.sealId)} already mirrored in Arkiv, skipping`);
     return "skipped" as const;
+  }
+  const check = await deps.arkiv.verify(rec);
+  if (!check.ok) {
+    if (!st.rejected.has(`${rec.sealId}:${log.transactionHash}`)) {
+      (deps.warn ?? deps.log)(`[mirror] REFUSED ${log.eventName} ${short(rec.sealId)} (tx ${log.transactionHash}): ${check.reason}`);
+    }
+    st.rejected.add(`${rec.sealId}:${log.transactionHash}`);
+    return "rejected" as const;
   }
   const res = await retry(() => deps.arkiv.write(rec), {
     attempts: 3,

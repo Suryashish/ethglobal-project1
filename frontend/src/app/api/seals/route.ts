@@ -1,6 +1,6 @@
 import { ApiError, handle, readJson } from "@/lib/server/errors";
 import { verifyArmProof } from "@/lib/server/auth";
-import { armSeal, checkDraft, sealsOfOwner } from "@/lib/server/seals";
+import { armSeal, checkDraft, rateLimitArm, sealsOfOwner } from "@/lib/server/seals";
 import { sealStateToJson } from "@/lib/serialize";
 
 export const runtime = "nodejs";
@@ -10,6 +10,7 @@ export const POST = handle(async (req: Request) => {
   const body = await readJson(req);
   const draft = checkDraft(body.draft);
   const { humanId } = await verifyArmProof(body.proof, draft);
+  rateLimitArm(humanId);
   const res = await armSeal(draft, humanId);
   return Response.json({
     sealId: draft.sealId,

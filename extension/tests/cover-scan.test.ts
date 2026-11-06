@@ -7,6 +7,16 @@ const B = "zzzz0000yyyy1111";
 const C = "0a1b2c3d4e5f6g7h";
 
 describe("scan: hidden cover phrases", () => {
+  it("hidden posts can be skipped without any DOM marker (Seen set), and ids per element are capped", () => {
+    document.body.innerHTML = `<div data-testid="tweetText" id="p">${encodeCover(A)}</div>
+      <div data-testid="tweetText" id="spam">${[A, B, C, "aaaabbbbccccdddd"].map(encodeCover).join(" ")}</div>`;
+    const p = document.getElementById("p")!;
+    const seen = new Set<Element>([p]);
+    const f = scanRoot(document, { has: (e) => seen.has(e), list: () => [...seen] });
+    expect(f.map((x) => x.el.id)).toEqual(["spam"]);
+    expect(f[0]!.ids).toHaveLength(3);
+    expect(p.hasAttribute("data-iigs-mark")).toBe(false);
+  });
   it("X: finds a cover phrase in tweet text (split across spans, with extra words) and marks it covert", () => {
     const words = encodeCover(A).split(" ");
     document.body.innerHTML = `

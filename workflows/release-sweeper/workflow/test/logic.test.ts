@@ -5,7 +5,7 @@ import { hexToBytes } from "../src/bytes";
 import { unwrapKey } from "../src/crypto";
 import { decideRelease } from "../src/release";
 import { encodeReleaseReport } from "../src/report";
-import { buildItems, buildSnapshot, planSweep } from "../src/sweep";
+import { buildItems, buildSnapshot, pickBatch, planSweep } from "../src/sweep";
 
 const V = "0xF87fC983a8D75c67cdF4E0f80b1507a74A21fBD8";
 const M = "0x9b95d050D551C8836578f32d92508467E7dA1638";
@@ -72,16 +72,19 @@ describe("escrow unwrap — compatible with @iigs/core wrapKey", () => {
   const sk = hexToBytes(fx.escrowSecretKey);
   for (const [id, wrapped] of Object.entries(fx.wrapped)) {
     test(`unwraps ${id}`, () => {
-      const k = unwrapKey(hexToBytes(wrapped), sk);
+      const k = unwrapKey(hexToBytes(wrapped), sk, id);
       expect("0x" + Buffer.from(k).toString("hex")).toBe((fx.keys as Record<string, string>)[id]!);
     });
   }
   test("tampering / wrong key fails", () => {
     const w = hexToBytes(Object.values(fx.wrapped)[0]!);
     w[60] ^= 1;
-    expect(() => unwrapKey(w, sk)).toThrow();
-    expect(() => unwrapKey(hexToBytes(Object.values(fx.wrapped)[0]!), new Uint8Array(32).fill(7))).toThrow();
-    expect(() => unwrapKey(new Uint8Array(10), sk)).toThrow(/wrong length/);
+    const id0 = Object.keys(fx.wrapped)[0]!;
+    expect(() => unwrapKey(w, sk, id0)).toThrow();
+    expect(() => unwrapKey(hexToBytes(Object.values(fx.wrapped)[0]!), new Uint8Array(32).fill(7), id0)).toThrow();
+    expect(() => unwrapKey(new Uint8Array(10), sk, id0)).toThrow(/wrong length/);
+    // bound to its seal: the same wrapped key under another seal id is refused
+    expect(() => unwrapKey(hexToBytes(Object.values(fx.wrapped)[0]!), sk, "some-other-seal")).toThrow();
   });
 });
 
@@ -164,5 +167,20 @@ describe("sweep planning", () => {
     ]);
     expect(r.errors.length).toBe(1);
     expect(buildItems([p("seal-pub-1", "PUBLIC"), p("seal-pub-2", "PUBLIC")], fx.wrapped, sk, 1).items.length).toBe(1);
+  });
+  test("pickBatch rotates: poisoned seals at the front cannot starve the rest", () => {
+    const due = Array.from({ length: 25 }, (_, i) => `s${String(i).padStart(2, "0")}`);
+    const seen = new Set<string>();
+    for (let run = 0; run < 3; run++) for (const id of pickBatch(due, 1_700_000_000 + run * 30, 10)) seen.add(id);
+    expect(seen.size).toBe(25); // ceil(25/10) = 3 runs cover everyone
+    expect(pickBatch(due.slice(0, 4), 123, 10)).toEqual(due.slice(0, 4));
+  });
+  test("buildItems: a wrapped key copied from another seal is NOT released (bound to its seal)", () => {
+    const p = (id: string) => ({ id, audience: "PUBLIC" as const, release: true, reason: "TIMER", line: "" });
+    const sk = hexToBytes(fx.escrowSecretKey);
+    const stolen = { "seal-pub-2": (fx.wrapped as Record<string, string>)["seal-pub-1"]! };
+    const r = buildItems([p("seal-pub-2")], stolen, sk, 10);
+    expect(r.items).toEqual([]);
+    expect(r.errors[0]).toMatch(/cannot unwrap/);
   });
 });

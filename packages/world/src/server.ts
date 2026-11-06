@@ -21,8 +21,22 @@ import type {
 
 export type WorldEnvironment = "staging" | "production" | "sandbox";
 
+/** Deployments where the dev World ID simulator may run. Anything else (e.g. "demo", "prod") must be live. */
+export const SIMULATOR_DEPLOYMENTS = ["dev", "local", "test"] as const;
+
+/**
+ * FAILS CLOSED: "live" only when WORLD_MODE=live. The simulator ("mock") is allowed only on dev/local/test
+ * deployments (IIGS_DEP); for any other deployment an unset or "mock" WORLD_MODE throws, so a real deployment
+ * can never silently accept simulator proofs (in mock mode every "author" is the same fake human).
+ */
 export function worldMode(): "mock" | "live" {
-  return process.env.WORLD_MODE === "live" ? "live" : "mock";
+  const m = process.env.WORLD_MODE?.trim();
+  if (m === "live") return "live";
+  const dep = process.env.IIGS_DEP?.trim() || "dev";
+  if ((m === undefined || m === "" || m === "mock") && (SIMULATOR_DEPLOYMENTS as readonly string[]).includes(dep)) return "mock";
+  throw new Error(
+    `WORLD_MODE=${m || "(unset)"} is not allowed for deployment "${dep}": the World ID simulator only runs on ${SIMULATOR_DEPLOYMENTS.join("/")} deployments. Set WORLD_MODE=live.`,
+  );
 }
 
 export type WorldServerConfig = {
@@ -57,7 +71,7 @@ const fail = (code: WorldErrorCode, message: string): Fail => ({ ok: false, code
 
 // ---------- anti-replay + issued-nonce bookkeeping (in-memory, best effort; use a shared store when scaling out) ----------
 const TTL_MS = 60 * 60 * 1000;
-const issued = new Map<string, { signal: string; kind: WorldKind; at: number }>();
+const issued = new Map<string, { signal: string; kind: WorldKind; at: number; nationality?: string }>();
 const consumed = new Map<string, number>();
 function sweep(now: number) {
   for (const [k, v] of issued) if (now - v.at > TTL_MS) issued.delete(k);
@@ -212,6 +226,11 @@ async function verifyReaderLive(env: WorldProofEnvelope, expectedSignal: string)
   if (!nat || result.identity_attested !== true) {
     return fail("nationality_unavailable", "your World ID did not attest the nationality — nationality is not available for this credential");
   }
+  // The claimed nationality must be the one declared when this request's nonce was issued.
+  const rec = typeof result.nonce === "string" ? issued.get(result.nonce) : undefined;
+  if (!rec || rec.kind !== "reader" || rec.nationality !== nat) {
+    return fail("nationality_mismatch", "the nationality claimed is not the one this World request was issued for");
+  }
   const replay = consumeNonce(result);
   if (replay) return replay;
 
@@ -254,13 +273,16 @@ export async function verifyReaderProof(env: WorldProofEnvelope, expectedSignal:
  * Owner requests are session proofs, so they are signed WITHOUT an action; reader requests carry the reader action.
  * Mock: null.
  */
-export async function createRpContext(kind: WorldKind, signal: string): Promise<WorldRpContext | null> {
+export async function createRpContext(kind: WorldKind, signal: string, opts: { nationality?: string } = {}): Promise<WorldRpContext | null> {
   if (worldMode() === "mock") return null;
   const cfg = worldConfig();
   if (!cfg.rpId || !cfg.signingKey) throw new Error("WORLD_RP_ID and WORLD_SIGNING_KEY must be set for WORLD_MODE=live");
   const sig = signRequest(kind === "reader" ? { signingKeyHex: cfg.signingKey, action: cfg.actionReader } : { signingKeyHex: cfg.signingKey });
   const now = Date.now();
   sweep(now);
-  issued.set(sig.nonce, { signal, kind, at: now });
+  // A reader declares the nationality they will prove BEFORE the World request is made; the verify step then
+  // only accepts that nationality for this nonce (no "prove USA, claim India").
+  const nationality = kind === "reader" && opts.nationality && /^[A-Z]{2}$/.test(opts.nationality) ? opts.nationality : undefined;
+  issued.set(sig.nonce, { signal, kind, at: now, ...(nationality ? { nationality } : {}) });
   return { rp_id: cfg.rpId, nonce: sig.nonce, created_at: sig.createdAt, expires_at: sig.expiresAt, signature: sig.sig };
 }

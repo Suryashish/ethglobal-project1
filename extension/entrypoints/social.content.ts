@@ -12,7 +12,10 @@ const E2E = import.meta.env.VITE_IIGS_E2E === "1";
 
 type Entry = { state: WireState | null | undefined; dec?: DecState; busy?: boolean; lastKind?: string };
 /** `covert` ids came from a hidden cover phrase: no card at all until the seal has opened. */
-type Host = { el: Element; ids: string[]; covert: Set<string>; host: HTMLElement; root: ShadowRoot };
+type Host = { el: Element; ids: string[]; covert: Set<string>; host: HTMLElement; root: ShadowRoot; visible: boolean };
+
+/** Most seals tracked per page: a page stuffed with phrases cannot make every viewer issue unbounded lookups. */
+const MAX_TRACKED = 200;
 
 const isOpen = (kind: string) => kind === "open-public" || kind === "open-gated";
 
@@ -26,6 +29,14 @@ export default defineContentScript({
   ],
   main() {
     const entries = new Map<string, Entry>();
+    const seenEls = new Set<Element>();
+    const seen = {
+      has: (el: Element) => seenEls.has(el),
+      list: () => {
+        for (const el of seenEls) if (!el.isConnected) seenEls.delete(el);
+        return [...seenEls];
+      },
+    };
     const hosts: Host[] = [];
     let reader: ReaderCtx = null;
     let lastEditable: HTMLElement | null = null;
@@ -64,7 +75,7 @@ export default defineContentScript({
     async function loadContext() {
       const c = await send({ type: "context" });
       if (c.ok) {
-        reader = c.reader ? { token: c.reader.token, nationality: c.reader.nationality, expiresAtMs: expiresAtMs(c.reader.expiresAt) } : null;
+        reader = c.reader ? { nationality: c.reader.nationality, expiresAtMs: expiresAtMs(c.reader.expiresAt) } : null;
       }
     }
 
@@ -95,6 +106,11 @@ export default defineContentScript({
         }
       }
       h.host.style.display = any ? "block" : "none";
+      h.visible = any;
+      // A hidden post's card is only put into the page once there is something to show: before it opens,
+      // the page carries no trace of the extension (no marker, no hidden element the site could detect).
+      if (any && !h.host.isConnected && h.el.isConnected) h.el.insertAdjacentElement("afterend", h.host);
+      if (!any && h.host.isConnected && h.ids.every((id) => h.covert.has(id))) h.host.remove();
     }
     const renderAll = () => hosts.forEach(renderHost);
     const renderFor = (id: string) => hosts.filter((h) => h.ids.includes(id)).forEach(renderHost);
@@ -138,6 +154,7 @@ export default defineContentScript({
           cipherB64 = c.b64;
         }
         if (!cipherB64) throw new Error("ciphertext not available");
+        if (!seal.contentHash) throw new Error("the seal has no content hash; refusing to decrypt unverified data");
         const d = decryptFromB64(id, keyB64, cipherB64, seal.contentHash);
         e.dec = d.kind === "text" ? { status: "ok", text: d.text } : { status: "file", name: d.name, size: d.size };
       } catch (err) {
@@ -183,21 +200,25 @@ export default defineContentScript({
     function scan() {
       for (const h of hosts) {
         // re-insert hosts that the site's re-render dropped
-        if (h.el.isConnected && !h.host.isConnected) h.el.insertAdjacentElement("afterend", h.host);
+        if (h.visible && h.el.isConnected && !h.host.isConnected) h.el.insertAdjacentElement("afterend", h.host);
       }
       for (let i = hosts.length - 1; i >= 0; i--) if (!hosts[i]!.el.isConnected) hosts.splice(i, 1);
       const fresh: string[] = [];
-      for (const f of scanRoot(document)) {
-        f.el.setAttribute(MARK, f.ids.join(","));
+      for (const f of scanRoot(document, seen)) {
+        if (entries.size >= MAX_TRACKED && f.ids.every((id) => !entries.has(id))) continue;
+        const covertOnly = f.ids.every((id) => f.covert.has(id));
+        if (covertOnly) seenEls.add(f.el); // no DOM marker for hidden posts
+        else f.el.setAttribute(MARK, f.ids.join(","));
         const host = document.createElement("div");
         host.setAttribute("data-iigs-card", f.ids.join(","));
         // Reddit renders posts as web components: a slotted title only shows siblings in the same slot.
         const slot = f.el.getAttribute("slot");
         if (slot) host.setAttribute("slot", slot);
         host.style.display = "none";
-        const root = host.attachShadow({ mode: "open" });
-        f.el.insertAdjacentElement("afterend", host);
-        hosts.push({ el: f.el, ids: f.ids, covert: f.covert, host, root });
+        // closed: the site's scripts cannot read the decrypted text out of the card (open only in e2e builds, for tests)
+        const root = host.attachShadow({ mode: E2E ? "open" : "closed" });
+        if (!covertOnly) f.el.insertAdjacentElement("afterend", host);
+        hosts.push({ el: f.el, ids: f.ids, covert: f.covert, host, root, visible: !covertOnly });
         for (const id of f.ids) {
           if (!entries.has(id)) {
             entries.set(id, { state: undefined });

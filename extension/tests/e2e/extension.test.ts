@@ -37,7 +37,7 @@ function mkSeal(text: string, o: { audience?: "PUBLIC" | "GATED"; countries?: st
     source: "extension", content: { type: "text", text }, rule: { kind: "TIMER", releaseAt: o.releaseAt ?? now() + 3 * 86400 + 4 * 3600 + 120 },
     audience: o.audience ?? "PUBLIC", countries: o.countries, escrowPublicKey: escrow.publicKey, gatedPublicKey: gated.publicKey,
   });
-  const key = unwrapKey(fromBase64(out.draft.wrappedKeyB64), o.audience === "GATED" ? gated.secretKey : escrow.secretKey);
+  const key = unwrapKey(fromBase64(out.draft.wrappedKeyB64), o.audience === "GATED" ? gated.secretKey : escrow.secretKey, out.draft.sealId);
   return { ...out, keyB64: toBase64(key) };
 }
 
@@ -274,12 +274,12 @@ describe("hidden posts (cover phrases)", () => {
     const popup = await ctx.newPage();
     await popup.goto(`chrome-extension://${extId}/popup.html`);
     // the popup scans the active tab of its window: make the timeline tab active again (same window)
-    const sameWindow = await sw.evaluate(async ([tid, ext]) => {
-      const pop = (await chrome.tabs.query({ url: `chrome-extension://${ext}/popup.html` }))[0]!;
+    const popWindow = await popup.evaluate(async () => (await (globalThis as any).chrome.tabs.getCurrent()).windowId);
+    const sameWindow = await sw.evaluate(async ([tid, win]) => {
       const t = await chrome.tabs.get(tid);
       await chrome.tabs.update(tid, { active: true });
-      return pop.windowId === t.windowId;
-    }, [tabId, extId] as const);
+      return win === t.windowId;
+    }, [tabId, popWindow] as const);
     expect(sameWindow).toBe(true);
     await popup.click("[data-testid=scan-page]");
     await expect.poll(() => popup.textContent("[data-testid=scan-result]").catch(() => null), { timeout: 10000 }).toContain("Opened 3 sealed posts");

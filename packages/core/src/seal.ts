@@ -71,7 +71,7 @@ export function createSeal(input: SealInput): SealOutput {
     throw new Error("a country-gated seal needs at least one country");
   }
   const wrapTo = input.audience === "PUBLIC" ? input.escrowPublicKey : input.gatedPublicKey;
-  const wrapped = wrapKey(key, wrapTo);
+  const wrapped = wrapKey(key, wrapTo, sealId);
   const needsSwarmUpload =
     input.forceSwarm === true || input.content.type === "file" || ciphertext.length > INLINE_MAX_BYTES;
 
@@ -103,9 +103,11 @@ export function openSeal(params: {
   sealId: string;
   key: Uint8Array;
   ciphertext: Uint8Array;
-  contentHash?: string;
+  /** sha256 of the ciphertext as recorded on Arkiv. REQUIRED: after release K is public, so without this check
+   *  whoever serves the ciphertext (a Swarm gateway, a proxy) could substitute different content. */
+  contentHash: string;
 }): Envelope {
-  if (params.contentHash && sha256Hex(params.ciphertext) !== params.contentHash) {
+  if (!params.contentHash || sha256Hex(params.ciphertext) !== params.contentHash) {
     throw new Error("ciphertext does not match the hash recorded on Arkiv");
   }
   return unpackEnvelope(decryptContent(params.key, params.sealId, params.ciphertext));
@@ -115,8 +117,11 @@ export function draftCiphertext(d: SealDraft): Uint8Array | null {
   return d.cipherInlineB64 ? fromBase64(d.cipherInlineB64) : null;
 }
 
+/** Longest a timer may run from arming (Arkiv keeps entities ~180 days; 5 days of margin). */
+export const MAX_SEAL_DAYS = 175;
+
 /** Validates a draft received over the network (server side). Returns an error string or null. */
-export function validateDraft(d: unknown): string | null {
+export function validateDraft(d: unknown, nowSec = Math.floor(Date.now() / 1000)): string | null {
   if (!d || typeof d !== "object") return "draft missing";
   const x = d as Record<string, unknown>;
   if (typeof x.sealId !== "string" || !/^[0-9a-z]{16}$/.test(x.sealId)) return "bad sealId";
@@ -128,6 +133,8 @@ export function validateDraft(d: unknown): string | null {
   if (x.kind === "TIMER" && x.intervalSec !== 0) return "timer seal must not have an interval";
   if (x.kind === "HEARTBEAT" && x.releaseAt !== 0) return "heartbeat seal must not have releaseAt";
   if ((x.intervalSec as number) > 180 * 86400) return "interval too long";
+  // Arkiv keeps a seal ~180 days: a timer beyond that would expire before it could release.
+  if ((x.releaseAt as number) > nowSec + MAX_SEAL_DAYS * 86400) return `release time too far away (max ${MAX_SEAL_DAYS} days)`;
   if (!["PUBLIC", "GATED"].includes(x.audience as string)) return "bad audience";
   if (!Array.isArray(x.countries) || !x.countries.every((c) => typeof c === "string" && /^[A-Z]{2}$/.test(c))) {
     return "bad countries";
@@ -139,6 +146,7 @@ export function validateDraft(d: unknown): string | null {
     if (x.cipherInlineB64.length > Math.ceil((INLINE_MAX_BYTES * 4) / 3) + 8) return "inline ciphertext too large";
   } else if (x.contentType === "swarm") {
     if (typeof x.swarmRef !== "string" || !/^[0-9a-f]{64}$/.test(x.swarmRef)) return "bad swarmRef (must be a plain 64-hex reference)";
+    if (x.cipherInlineB64 !== undefined) return "swarm seals must not carry inline ciphertext";
   } else return "bad contentType";
   if (typeof x.wrappedKeyB64 !== "string") return "missing wrapped key";
   try {

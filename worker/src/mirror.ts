@@ -1,6 +1,6 @@
 /** Release mirror: Sepolia SilentRelease events -> Arkiv iigs.release. Replaceable: anyone can run it. */
-import { SILENT_RELEASE_ABI } from "@iigs/core";
-import { arkivPublicClient, arkivWalletClient, getRelease, writeRelease, type ArkivConfig } from "@iigs/core/arkiv";
+import { openSeal, ruleHasFired, SILENT_RELEASE_ABI } from "@iigs/core";
+import { arkivPublicClient, arkivWalletClient, getRelease, getSealState, writeRelease, type ArkivConfig } from "@iigs/core/arkiv";
 import { createPublicClient, http, type Address } from "viem";
 import { loadMirrorConfig, WORKER_DIR, type MirrorConfig } from "./config.js";
 import { errMsg, makeLogger, sleep } from "./log.js";
@@ -46,8 +46,30 @@ export function realArkivSink(c: MirrorConfig, log: (m: string) => void): ArkivS
   const cfg = arkivCfg(c);
   const pub = arkivPublicClient(cfg);
   const wallet = arkivWalletClient(cfg, c.mirrorPrivateKey);
+  const gateway = (process.env.SWARM_GATEWAY || "https://api.gateway.ethswarm.org").replace(/\/+$/, "");
   return {
     has: async (sealId) => (await getRelease(pub, cfg, sealId)) !== null,
+    async verify(r) {
+      const state = await getSealState(pub, cfg, r.sealId, { withInline: true });
+      if (!state) return { ok: false, reason: "no seal with this id on Arkiv" };
+      if (!ruleHasFired(state)) return { ok: false, reason: "the seal's own rule has not fired (forged or premature release)" };
+      if ((state.seal.audience === "GATED") !== r.gated) return { ok: false, reason: "release type does not match the seal's audience" };
+      if (r.gated) return { ok: true };
+      if (!r.key) return { ok: false, reason: "public release without a key" };
+      let ciphertext = state.seal.cipherInline;
+      if (!ciphertext && /^[0-9a-f]{64}$/.test(state.seal.swarmRef)) {
+        const res = await fetch(`${gateway}/bytes/${state.seal.swarmRef}`);
+        if (!res.ok) throw new Error(`Swarm fetch failed (${res.status})`); // transient: retried on the next pass
+        ciphertext = new Uint8Array(await res.arrayBuffer());
+      }
+      if (!ciphertext) return { ok: false, reason: "ciphertext not found" };
+      try {
+        openSeal({ sealId: r.sealId, key: r.key, ciphertext, contentHash: state.seal.contentHash });
+        return { ok: true };
+      } catch {
+        return { ok: false, reason: "the published key does not decrypt this seal" };
+      }
+    },
     async write(r) {
       try {
         return await writeRelease(wallet, cfg, r);

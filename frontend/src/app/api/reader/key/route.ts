@@ -15,6 +15,6 @@ export const POST = handle(async (req: Request) => {
   const tokenSecret = hexKey("READER_TOKEN_SECRET");
   const chainReleased = state.release ? false : await isReleasedOnSepolia(state.seal.sealId);
   checkGatedRelease(state, body.token, tokenSecret, { chainReleased });
-  const key = unwrapKey(state.seal.wrappedKeyEscrow, hexKey("GATED_SECRET_KEY"));
+  const key = unwrapKey(state.seal.wrappedKeyEscrow, hexKey("GATED_SECRET_KEY"), state.seal.sealId);
   return Response.json({ keyB64: toBase64(key) });
 });

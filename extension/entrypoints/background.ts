@@ -1,5 +1,5 @@
 import { browser } from "wxt/browser";
-import { toBase64 } from "@iigs/core";
+import { encodeCover, isSealId, toBase64 } from "@iigs/core";
 import { addMine, get, getBaseUrl, set, type MyPost } from "../lib/storage";
 import { normalizeConfig, normalizeStates, type PublicConfig, type WireState } from "../lib/wire";
 import type { Msg, TabMsg } from "../lib/messages";
@@ -9,6 +9,12 @@ import { expiresAtMs, nowSec } from "../lib/format";
 const STATE_TTL_MS = 20_000;
 const CONFIG_TTL_MS = 10 * 60_000;
 const cache = new Map<string, { at: number; state: WireState | null }>();
+const CACHE_MAX = 500;
+function cachePut(id: string, v: { at: number; state: WireState | null }) {
+  cache.delete(id);
+  cache.set(id, v);
+  while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string); // LRU: drop the oldest
+}
 
 async function api(path: string, init?: RequestInit): Promise<Response> {
   const base = await getBaseUrl();
@@ -52,7 +58,7 @@ async function getStates(ids: string[], force: boolean): Promise<Record<string, 
     if (!res.ok) throw new Error((await errorFrom(res)).error);
     const norm = normalizeStates(await res.json(), batch);
     for (const id of batch) {
-      cache.set(id, { at: Date.now(), state: norm[id] ?? null });
+      cachePut(id, { at: Date.now(), state: norm[id] ?? null });
       out[id] = norm[id] ?? null;
     }
   }
@@ -101,11 +107,15 @@ async function insertIntoTab(tabId: number, text: string): Promise<{ inserted: b
 
 async function onArmed(m: Extract<Msg, { type: "armed" }>) {
   const pending = await get("pending");
-  const draft = pending && pending.draft.sealId === m.sealId ? pending.draft : null;
+  // Only the seal THIS extension handed to the web app may come back as "armed".
+  if (!pending || pending.draft.sealId !== m.sealId) throw new Error("not the seal this extension is arming");
+  const draft = pending.draft;
+  // The text inserted into the user's composer is computed here, never taken from the page.
+  const coverPost = encodeCover(m.sealId);
   const post: MyPost = {
     sealId: m.sealId,
     ownerNullifier: m.ownerNullifier,
-    post: m.post,
+    post: coverPost,
     createdAt: nowSec(),
     kind: draft?.kind,
     releaseAt: draft?.releaseAt,
@@ -119,7 +129,7 @@ async function onArmed(m: Extract<Msg, { type: "armed" }>) {
       const tab = await browser.tabs.update(pending.tabId, { active: true });
       if (tab?.windowId != null) await browser.windows.update(tab.windowId, { focused: true });
       await sleep(400);
-      inserted = (await insertIntoTab(pending.tabId, m.post)).inserted;
+      inserted = (await insertIntoTab(pending.tabId, coverPost)).inserted;
     } catch {
       /* origin tab gone: the post stays in "My sealed posts" for copy/insert */
     }
@@ -147,13 +157,37 @@ async function ensureBridge() {
   ]);
 }
 
-async function handle(m: Msg, sender: { tab?: { id?: number } }): Promise<unknown> {
+type Sender = { id?: string; url?: string; tab?: { id?: number } };
+
+/** Who sent a message: our own pages (popup), the bridge on the web app's origin, or a content script on a site. */
+async function senderKind(sender: Sender): Promise<"extension" | "bridge" | "site" | "foreign"> {
+  if (sender.id && sender.id !== browser.runtime.id) return "foreign";
+  const ownOrigin = new URL(browser.runtime.getURL("/")).origin;
+  if (!sender.url || new URL(sender.url).origin === ownOrigin) return "extension";
+  const origin = new URL(sender.url).origin;
+  return origin === new URL(await getBaseUrl()).origin ? "bridge" : "site";
+}
+
+const EXTENSION_ONLY = new Set<Msg["type"]>(["refresh-config", "start-arm", "apply-base-url"]);
+const BRIDGE_ONLY = new Set<Msg["type"]>(["armed", "reader-token"]);
+
+async function handle(m: Msg, sender: Sender): Promise<unknown> {
+  const kind = await senderKind(sender);
+  if (kind === "foreign") return { ok: false, error: "unknown sender" };
+  if (EXTENSION_ONLY.has(m.type) && kind !== "extension") return { ok: false, error: "not allowed from a web page" };
+  if (BRIDGE_ONLY.has(m.type) && kind !== "bridge") return { ok: false, error: "only the Silent Seal web app may send this" };
   switch (m.type) {
     case "states":
       return { ok: true, states: await getStates(m.ids, !!m.force) };
     case "context": {
       const cfg = await get("config");
-      return { ok: true, baseUrl: await getBaseUrl(), reader: await validReader(), swarmGateway: cfg?.value.swarmGateway ?? "https://api.gateway.ethswarm.org" };
+      const r = await validReader();
+      return {
+        ok: true,
+        baseUrl: await getBaseUrl(),
+        reader: r ? { nationality: r.nationality, expiresAt: r.expiresAt } : null,
+        swarmGateway: cfg?.value.swarmGateway ?? "https://api.gateway.ethswarm.org",
+      };
     }
     case "refresh-config":
       return { ok: true, config: await getConfig(true) };
@@ -163,10 +197,17 @@ async function handle(m: Msg, sender: { tab?: { id?: number } }): Promise<unknow
       return { ok: true };
     }
     case "armed":
+      if (!isSealId(m.sealId)) return { ok: false, error: "bad seal id" };
       return { ok: true, ...(await onArmed(m)) };
-    case "reader-token":
+    case "reader-token": {
+      const now = nowSec();
+      const okShape =
+        typeof m.token === "string" && m.token.length > 0 && m.token.length <= 2048 &&
+        /^[A-Z]{2}$/.test(m.nationality) && Number.isInteger(m.expiresAt) && m.expiresAt > now && m.expiresAt <= now + 2 * 86400;
+      if (!okShape) return { ok: false, error: "malformed reader token" };
       await set("reader", { token: m.token, nationality: m.nationality, expiresAt: m.expiresAt });
       return { ok: true };
+    }
     case "reader-key": {
       const r = await validReader();
       if (!r) return { ok: false, error: "Verify your nationality first.", code: "no_token" };
@@ -193,7 +234,8 @@ async function handle(m: Msg, sender: { tab?: { id?: number } }): Promise<unknow
       await ensureBridge();
       return { ok: true };
     case "insert": {
-      const tabId = m.tabId ?? sender.tab?.id;
+      // a page may only insert into its own tab; our popup may target the tab it is attached to
+      const tabId = kind === "extension" ? (m.tabId ?? sender.tab?.id) : sender.tab?.id;
       if (tabId == null) return { ok: false, error: "no tab" };
       return { ok: true, ...(await insertIntoTab(tabId, m.text)) };
     }

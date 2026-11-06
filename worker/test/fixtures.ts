@@ -15,7 +15,7 @@ export function seal(over: {
   alive?: boolean;
 }): { state: SealState; key: Uint8Array } {
   const key = generateContentKey();
-  const wrapped = wrapKey(key, escrow.publicKey);
+  const wrapped = wrapKey(key, escrow.publicKey, over.id);
   const state = {
     seal: {
       entityKey: "0x01",

@@ -141,10 +141,24 @@ export async function getSeal(
     .from(SealSchema)
     .where(and(eq("dep", cfg.dep), eq("sealId", sealId)))
     .ownedBy(cfg.verifier)
-    .limit(5)
+    .limit(20)
     .fetch();
-  const row = res.entities[0];
-  return row ? toSeal(row, opts.withInline ?? false) : null;
+  const seals = res.entities.map((r) => toSeal(r, opts.withInline ?? false));
+  return earliestPerId(seals)[0] ?? null;
+}
+
+/**
+ * One seal per sealId: the EARLIEST created wins, everywhere (API, reader, sweeper, CRE).
+ * Arming rejects a sealId that already exists, so duplicates should never appear; this is defense in depth
+ * so a late duplicate can never take over (or shadow) the original seal.
+ */
+export function earliestPerId(seals: SealRecord[]): SealRecord[] {
+  const best = new Map<string, SealRecord>();
+  for (const s of seals) {
+    const b = best.get(s.sealId);
+    if (!b || s.createdAt < b.createdAt || (s.createdAt === b.createdAt && s.entityKey < b.entityKey)) best.set(s.sealId, s);
+  }
+  return [...best.values()];
 }
 
 export async function getCheckins(client: ArkivPublic, cfg: ArkivConfig, sealId: string): Promise<CheckinRecord[]> {
@@ -237,9 +251,7 @@ export async function getSealStates(
   const out: Record<string, SealState> = {};
   const dis = new Map(disarms.entities.map((r) => [toDisarm(r).sealId, toDisarm(r)]));
   const rel = new Map(releases.entities.map((r) => [toRelease(r).sealId, toRelease(r)]));
-  for (const row of seals.entities) {
-    const seal = toSeal(row, opts.withInline ?? false);
-    if (out[seal.sealId]) continue;
+  for (const seal of earliestPerId(seals.entities.map((row) => toSeal(row, opts.withInline ?? false)))) {
     out[seal.sealId] = assembleState(
       seal,
       checkins.filter((c) => c.sealId === seal.sealId),
@@ -288,7 +300,7 @@ export async function loadSweepSnapshot(client: ArkivPublic, cfg: ArkivConfig, n
   const ci = byId(checkins);
   const di = byId(disarms);
   const re = byId(releases);
-  return seals.map((s) => assembleState(s, ci.get(s.sealId) ?? [], di.get(s.sealId)?.[0] ?? null, re.get(s.sealId)?.[0] ?? null, now));
+  return earliestPerId(seals).map((s) => assembleState(s, ci.get(s.sealId) ?? [], di.get(s.sealId)?.[0] ?? null, re.get(s.sealId)?.[0] ?? null, now));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -363,6 +375,15 @@ export async function writeDisarm(wallet: ArkivWallet, cfg: ArkivConfig, sealId:
   const at = nowSec();
   const res = await wallet.createEntity(DisarmSchema, { dep: cfg.dep, sealId, at: u64(at) }, { expiration: LONG() });
   return { entityKey: res.entityKey, txHash: res.txHash, at };
+}
+
+/**
+ * Keeps a long-lived seal on Arkiv: entities expire after ~180 days, so a heartbeat seal that keeps being
+ * checked in would otherwise silently vanish (and never release). Sets the seal's expiry to 180 days from now.
+ */
+export async function extendSealLife(wallet: ArkivWallet, sealEntityKey: Hex) {
+  const res = await wallet.extendEntity({ entityKey: sealEntityKey, expiration: LONG() });
+  return { txHash: res.txHash };
 }
 
 /** Release-now / extend: the verifier patches the seal's releaseAt. */

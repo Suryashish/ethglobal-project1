@@ -36,7 +36,8 @@ describe("scan", () => {
   it("skips marked nodes and does not double-match nested containers", () => {
     document.body.innerHTML = `<div slot="text-body"><div class="md">${post(ID)}</div></div>`;
     const f1 = scanRoot(document);
-    expect(f1.length).toBe(2); // before marking, both match
+    expect(f1.length).toBe(1); // the nested .md belongs to the outer post: one card, not two
+    expect(f1[0]!.el.getAttribute("slot")).toBe("text-body");
     f1[0]!.el.setAttribute("data-iigs-mark", ID);
     expect(scanRoot(document).length).toBe(0);
   });
@@ -129,7 +130,7 @@ describe("compose + handoff + decrypt", () => {
       source: "extension", content: { type: "text", text: "the secret ✨" }, rule: { kind: "TIMER", releaseAt: 2e9 },
       audience: "PUBLIC", escrowPublicKey: escrow.publicKey, gatedPublicKey: gated.publicKey,
     });
-    const key = unwrapKey(fromBase64(out.draft.wrappedKeyB64), escrow.secretKey);
+    const key = unwrapKey(fromBase64(out.draft.wrappedKeyB64), escrow.secretKey, out.draft.sealId);
     const d = decryptFromB64(out.draft.sealId, toBase64(key), out.draft.cipherInlineB64!, out.draft.contentHash);
     expect(d).toEqual({ kind: "text", text: "the secret ✨" });
     expect(() => decryptFromB64(out.draft.sealId, toBase64(key), out.draft.cipherInlineB64!, "0".repeat(64))).toThrow();
@@ -139,8 +140,8 @@ describe("compose + handoff + decrypt", () => {
       source: "extension", content: { type: "text", text: "for India" }, rule: { kind: "TIMER", releaseAt: 2e9 },
       audience: "GATED", countries: ["IN"], escrowPublicKey: escrow.publicKey, gatedPublicKey: gated.publicKey,
     });
-    const key = unwrapKey(fromBase64(out.draft.wrappedKeyB64), gated.secretKey);
-    expect(decryptFromB64(out.draft.sealId, toBase64(key), out.draft.cipherInlineB64!)).toEqual({ kind: "text", text: "for India" });
+    const key = unwrapKey(fromBase64(out.draft.wrappedKeyB64), gated.secretKey, out.draft.sealId);
+    expect(decryptFromB64(out.draft.sealId, toBase64(key), out.draft.cipherInlineB64!, out.draft.contentHash)).toEqual({ kind: "text", text: "for India" });
     void fromHex;
   });
 });
@@ -153,8 +154,15 @@ describe("wire normalizers", () => {
     expect(normalizeStates([s], [ID])[ID]).toBe(s);
   });
   it("config: tolerant key names", () => {
-    const c = normalizeConfig({ baseUrl: "http://x", keys: { ESCROW_PUBLIC_KEY: "aa", gatedPublicKey: "bb" }, swarmGateway: "https://g/" });
-    expect(c).toMatchObject({ escrowPublicKey: "aa", gatedPublicKey: "bb", swarmGateway: "https://g" });
+    const E = "aa".repeat(32), G = "bb".repeat(32);
+    const c = normalizeConfig({ baseUrl: "http://x", keys: { ESCROW_PUBLIC_KEY: E, gatedPublicKey: G }, swarmGateway: "https://g/" }, { escrow: "", gated: "" });
+    expect(c).toMatchObject({ escrowPublicKey: E, gatedPublicKey: G, swarmGateway: "https://g" });
     expect(() => normalizeConfig({})).toThrow();
+    // look-alike names / malformed keys are not accepted
+    expect(() => normalizeConfig({ myEscrowPubX: E, gatedPublicKey: G }, { escrow: "", gated: "" })).toThrow();
+    expect(() => normalizeConfig({ escrowPublicKey: "aa", gatedPublicKey: G }, { escrow: "", gated: "" })).toThrow(/malformed/);
+    // pinned keys: a server with different keys is refused
+    expect(() => normalizeConfig({ escrowPublicKey: E, gatedPublicKey: G }, { escrow: "cc".repeat(32), gated: G })).toThrow(/do not match/);
+    expect(normalizeConfig({ escrowPublicKey: E, gatedPublicKey: G }, { escrow: E, gated: G }).escrowPublicKey).toBe(E);
   });
 });

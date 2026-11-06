@@ -15,7 +15,9 @@ type Phase =
   | { t: "error"; msg: string }
   | { t: "open"; env: Envelope };
 
-const PREVIEW_IMG = /^image\/(png|jpe?g|gif|webp|avif|bmp|svg\+xml)$/;
+// Raster images only. SVG is NOT previewed: an author-supplied SVG can carry <script>, and a blob: URL opened in a
+// new tab runs with this site's origin. Everything that is not previewable is served as application/octet-stream.
+const PREVIEW_IMG = /^image\/(png|jpe?g|gif|webp|avif|bmp)$/;
 
 /** Decrypts a released seal in the browser (PUBLIC: key from Arkiv; GATED: key from the key service). */
 export function ReleasedView({ state }: { state: SealState }) {

@@ -28,6 +28,11 @@ contract SilentRelease is IReceiver {
     address public forwarder;
     /// @notice Optional: if non-zero, the workflow owner encoded in the report metadata must match.
     address public expectedWorkflowOwner;
+    /// @notice Optional testnet stopgap: if non-zero, the transaction must originate from this account.
+    /// @dev `cre workflow simulate --broadcast` delivers through the public MockKeystoneForwarder, which checks no
+    ///      signatures, so anyone could submit a fake report through it. Pinning the broadcasting account closes that.
+    ///      On a real CRE DON the KeystoneForwarder verifies the DON's signatures; set this back to zero there.
+    address public trustedSender;
 
     mapping(bytes32 => uint64) private _releasedAt;
     uint256 public releaseCount;
@@ -37,12 +42,14 @@ contract SilentRelease is IReceiver {
     event ReleaseSkipped(bytes32 indexed idHash, string sealId, string reason);
     event ForwarderUpdated(address indexed previous, address indexed next);
     event ExpectedWorkflowOwnerUpdated(address indexed next);
+    event TrustedSenderUpdated(address indexed next);
     event OwnershipTransferred(address indexed previous, address indexed next);
 
     error NotForwarder(address caller);
     error NotOwner();
     error ZeroAddress();
     error WrongWorkflowOwner(address got);
+    error UntrustedSender(address origin);
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -60,6 +67,8 @@ contract SilentRelease is IReceiver {
     /// @inheritdoc IReceiver
     function onReport(bytes calldata metadata, bytes calldata report) external override {
         if (msg.sender != forwarder) revert NotForwarder(msg.sender);
+        // solhint-disable-next-line avoid-tx-origin
+        if (trustedSender != address(0) && tx.origin != trustedSender) revert UntrustedSender(tx.origin);
         if (expectedWorkflowOwner != address(0)) {
             address got = _workflowOwner(metadata);
             if (got != expectedWorkflowOwner) revert WrongWorkflowOwner(got);
@@ -109,6 +118,11 @@ contract SilentRelease is IReceiver {
     function setExpectedWorkflowOwner(address next) external onlyOwner {
         expectedWorkflowOwner = next;
         emit ExpectedWorkflowOwnerUpdated(next);
+    }
+
+    function setTrustedSender(address next) external onlyOwner {
+        trustedSender = next;
+        emit TrustedSenderUpdated(next);
     }
 
     function transferOwnership(address next) external onlyOwner {

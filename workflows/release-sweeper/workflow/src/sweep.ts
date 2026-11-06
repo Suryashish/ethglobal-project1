@@ -90,6 +90,17 @@ export function planSweep(snap: Snapshot, now: number): SealPlan[] {
   });
 }
 
+/**
+ * Which due seals this run handles. The window ROTATES with the 30 s cron tick, so seals that can never be
+ * released (e.g. armed with a garbage wrapped key) cannot sit at the front forever and starve everyone else:
+ * every due seal is attempted at least once every ceil(due / maxBatch) runs. Deterministic across DON nodes.
+ */
+export function pickBatch<T>(due: T[], now: number, maxBatch: number, tickSec = 30): T[] {
+  if (due.length <= maxBatch) return due;
+  const start = (Math.floor(now / tickSec) * maxBatch) % due.length;
+  return [...due.slice(start), ...due.slice(0, start)].slice(0, maxBatch);
+}
+
 export type BuiltItems = { items: ReleaseItem[]; errors: string[] };
 
 /**
@@ -114,7 +125,7 @@ export function buildItems(
       const w = wrappedKeyHexById[p.id];
       if (!w) throw new Error("no wrappedKeyEscrow found");
       if (!escrowSecretKey) throw new Error("escrow secret not available");
-      const k = unwrapKey(hexToBytes(w), escrowSecretKey);
+      const k = unwrapKey(hexToBytes(w), escrowSecretKey, p.id);
       items.push({ sealId: p.id, gated: false, key: `0x${bytesToHex(k)}` });
     } catch (e) {
       errors.push(`seal ${p.id}: cannot unwrap content key (${e instanceof Error ? e.message : String(e)}) — skipped`);

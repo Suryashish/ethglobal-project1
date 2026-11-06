@@ -23,7 +23,7 @@ export const SELECT_ATTRS = {
   checkin: ["sealId", "expiresAtSec"],
   disarm: ["sealId"],
   release: ["sealId"],
-  wrappedKey: ["sealId", "wrappedKeyEscrow"],
+  wrappedKey: ["sealId", "wrappedKeyEscrow", "createdAt"],
 } as const;
 
 const DEP_RE = /^[A-Za-z0-9._:-]{1,64}$/;

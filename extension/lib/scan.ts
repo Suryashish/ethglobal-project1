@@ -33,15 +33,25 @@ export function textWithLinks(el: Element): string {
  */
 export type Found = { el: Element; ids: string[]; covert: Set<string> };
 
-function blocked(el: Element): boolean {
-  return !!el.closest(`[${MARK}]`) || !!el.querySelector(`[${MARK}]`) || !!el.closest("[data-iigs-card]");
+/** Elements already handled without a DOM mark (hidden posts leave no trace in the page until they open). */
+export type Seen = { has(el: Element): boolean; list(): Element[] };
+const NO_SEEN: Seen = { has: () => false, list: () => [] };
+
+function blocked(el: Element, seen: Seen): boolean {
+  if (el.closest(`[${MARK}]`) || el.querySelector(`[${MARK}]`) || el.closest("[data-iigs-card]")) return true;
+  for (let p: Element | null = el; p; p = p.parentElement) if (seen.has(p)) return true;
+  return seen.list().some((s) => el.contains(s));
 }
+
+/** At most this many seal ids per post element (a comment stuffed with phrases cannot fan out into many lookups). */
+export const MAX_IDS_PER_ELEMENT = 3;
 
 /** Seal ids in a text: legacy token / link (visible badges) and cover phrases (hidden until opened). */
 export function idsIn(text: string): { ids: string[]; covert: Set<string> } {
   const visible = findSealIds(text);
   const covert = findCoverSealIds(text).filter((id) => !visible.includes(id));
-  return { ids: [...visible, ...covert], covert: new Set(covert) };
+  const ids = [...visible, ...covert].slice(0, MAX_IDS_PER_ELEMENT);
+  return { ids, covert: new Set(covert.filter((id) => ids.includes(id))) };
 }
 
 // A cover phrase is 16 words (~90+ chars); cheaper text nodes cannot hold one.
@@ -51,11 +61,13 @@ const MIN_COVER_CHARS = COVER_WORDS * 3;
  * Finds post-text elements that reference seal ids and are not marked yet.
  * Falls back to a text-node walk over `article` elements for sites with other markup.
  */
-export function scanRoot(root: ParentNode): Found[] {
+export function scanRoot(root: ParentNode, seen: Seen = NO_SEEN): Found[] {
   const found: Found[] = [];
   const claimed = new Set<Element>();
   for (const el of Array.from(root.querySelectorAll(TEXT_SELECTORS))) {
-    if (blocked(el)) continue;
+    if (blocked(el, seen)) continue;
+    // nested matches (e.g. a .md inside a text-body slot) belong to the outer post element
+    if ([...claimed].some((c) => c.contains(el) || el.contains(c))) continue;
     const r = idsIn(textWithLinks(el));
     if (r.ids.length) {
       found.push({ el, ...r });
@@ -75,7 +87,7 @@ export function scanRoot(root: ParentNode): Found[] {
       const parent = n.parentElement;
       if (!r.ids.length || !parent) continue;
       if ([...claimed].some((c) => c.contains(parent))) continue;
-      if (blocked(parent)) continue;
+      if (blocked(parent, seen)) continue;
       found.push({ el: parent, ...r });
       claimed.add(parent);
     }

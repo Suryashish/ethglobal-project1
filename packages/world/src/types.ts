@@ -32,7 +32,7 @@ export const MOCK_NATIONALITIES = ["IN", "MT", "US", "GB", "DE", "FR", "BR", "NG
 
 /** Live-mode failure codes returned in `{ ok:false, code }` by the server verifiers. */
 export const WORLD_ERROR_CODES = [
-  "bad_proof", "wrong_kind", "signal_mismatch", "mode_mismatch", "wrong_proof_type", "wrong_environment",
+  "bad_proof", "wrong_kind", "signal_mismatch", "mode_mismatch", "wrong_proof_type", "wrong_environment", "nationality_mismatch",
   "verification_failed", "max_verifications", "credential_unavailable", "nationality_unavailable",
   "replayed_proof", "sybil_score_too_high", "config_error", "verify_unreachable",
 ] as const;

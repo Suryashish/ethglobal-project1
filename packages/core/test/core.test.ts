@@ -50,13 +50,20 @@ describe("crypto", () => {
   it("wraps and unwraps K to an X25519 key", () => {
     const kp = generateKeypair();
     const k = generateContentKey();
-    const w = wrapKey(k, kp.publicKey);
+    const w = wrapKey(k, kp.publicKey, "aaaaaaaaaaaaaaaa");
     expect(w.length).toBe(104);
-    expect(unwrapKey(w, kp.secretKey)).toEqual(k);
-    expect(() => unwrapKey(w, generateKeypair().secretKey)).toThrow();
+    expect(unwrapKey(w, kp.secretKey, "aaaaaaaaaaaaaaaa")).toEqual(k);
+    expect(() => unwrapKey(w, generateKeypair().secretKey, "aaaaaaaaaaaaaaaa")).toThrow();
     const tampered = w.slice();
     tampered[70]! ^= 1;
-    expect(() => unwrapKey(tampered, kp.secretKey)).toThrow();
+    expect(() => unwrapKey(tampered, kp.secretKey, "aaaaaaaaaaaaaaaa")).toThrow();
+  });
+  it("a wrapped key is bound to its seal: copied into another seal it cannot be unwrapped", () => {
+    // Attack: arm your own seal with a victim's wrappedKeyEscrow so the releaser unwraps it under YOUR seal.
+    const kp = generateKeypair();
+    const victim = wrapKey(generateContentKey(), kp.publicKey, "victimseal000001");
+    expect(() => unwrapKey(victim, kp.secretKey, "attackerseal0001")).toThrow();
+    expect(() => wrapKey(generateContentKey(), kp.publicKey, "")).toThrow();
   });
 });
 
@@ -73,8 +80,12 @@ describe("seal / open", () => {
       source: "vault",
     });
     expect(out.needsSwarmUpload).toBe(false);
-    expect(validateDraft(out.draft)).toBeNull();
-    const k = unwrapKey(fromBase64(out.draft.wrappedKeyB64), escrow.secretKey);
+    expect(validateDraft(out.draft, out.draft.releaseAt - 86400)).toBeNull();
+    // Arkiv keeps a seal ~180 days: a timer further away than MAX_SEAL_DAYS is refused at arm time
+    expect(validateDraft(out.draft, out.draft.releaseAt - 200 * 86400)).toMatch(/too far away/);
+    // a swarm seal cannot smuggle a large inline ciphertext (it would be stored and paid for)
+    expect(validateDraft({ ...out.draft, contentType: "swarm", swarmRef: "a".repeat(64) }, out.draft.releaseAt - 86400)).toMatch(/must not carry inline/);
+    const k = unwrapKey(fromBase64(out.draft.wrappedKeyB64), escrow.secretKey, out.draft.sealId);
     const env = openSeal({ sealId: out.draft.sealId, key: k, ciphertext: fromBase64(out.draft.cipherInlineB64!), contentHash: out.draft.contentHash });
     expect(env.header.kind).toBe("text");
     expect(new TextDecoder().decode(env.body)).toBe("hello world 👋");
@@ -95,8 +106,8 @@ describe("seal / open", () => {
     expect(validateDraft(out.draft)).toBe("bad swarmRef (must be a plain 64-hex reference)");
     out.draft.swarmRef = "a".repeat(64);
     expect(validateDraft(out.draft)).toBeNull();
-    expect(() => unwrapKey(fromBase64(out.draft.wrappedKeyB64), escrow.secretKey)).toThrow();
-    const k = unwrapKey(fromBase64(out.draft.wrappedKeyB64), gated.secretKey);
+    expect(() => unwrapKey(fromBase64(out.draft.wrappedKeyB64), escrow.secretKey, out.draft.sealId)).toThrow();
+    const k = unwrapKey(fromBase64(out.draft.wrappedKeyB64), gated.secretKey, out.draft.sealId);
     const env = openSeal({ sealId: out.draft.sealId, key: k, ciphertext: out.ciphertext, contentHash: out.draft.contentHash });
     expect(env.header).toEqual({ kind: "file", name: "evidence.pdf", mime: "application/pdf", size: 20_000 });
     expect(env.body).toEqual(bytes);

@@ -7,12 +7,19 @@ export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   zip: { name: "silent-seal" },
   outDir: E2E ? ".output-e2e" : ".output",
-  vite: () => ({ define: { "import.meta.env.VITE_IIGS_E2E": JSON.stringify(E2E ? "1" : "0") } }),
+  vite: () => ({
+    define: {
+      "import.meta.env.VITE_IIGS_E2E": JSON.stringify(E2E ? "1" : "0"),
+      // Pin the encryption keys into release builds (the e2e build talks to a mock server with throwaway keys).
+      "import.meta.env.VITE_IIGS_ESCROW_PUBLIC_KEY": JSON.stringify(E2E ? "" : process.env.IIGS_ESCROW_PUBLIC_KEY ?? ""),
+      "import.meta.env.VITE_IIGS_GATED_PUBLIC_KEY": JSON.stringify(E2E ? "" : process.env.IIGS_GATED_PUBLIC_KEY ?? ""),
+    },
+  }),
   manifest: {
     name: "Silent Seal",
     description: "Seal a post. It opens at a set time unless you disarm it — optionally only for verified readers of chosen countries.",
     version: "0.1.0",
-    permissions: ["storage", "activeTab", "scripting", "tabs", "clipboardWrite"],
+    permissions: ["storage", "scripting", "clipboardWrite"],
     host_permissions: [
       "https://x.com/*",
       "https://twitter.com/*",

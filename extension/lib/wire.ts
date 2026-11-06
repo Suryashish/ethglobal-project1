@@ -73,10 +73,26 @@ function deepFind(o: unknown, re: RegExp, depth = 0): string | null {
   return null;
 }
 
-export function normalizeConfig(json: unknown): PublicConfig {
-  const escrow = deepFind(json, /escrow.*pub/i);
-  const gated = deepFind(json, /gated.*pub/i);
+const HEX32 = /^[0-9a-f]{64}$/i;
+
+/**
+ * Encryption keys built into this extension at build time (IIGS_ESCROW_PUBLIC_KEY / IIGS_GATED_PUBLIC_KEY).
+ * When set, a server that hands out different keys is refused: a compromised or phished server URL could
+ * otherwise make the extension lock every new seal to the attacker's key.
+ */
+export const PINNED_KEYS = {
+  escrow: (import.meta.env?.VITE_IIGS_ESCROW_PUBLIC_KEY as string | undefined) || "",
+  gated: (import.meta.env?.VITE_IIGS_GATED_PUBLIC_KEY as string | undefined) || "",
+};
+
+export function normalizeConfig(json: unknown, pinned: { escrow: string; gated: string } = PINNED_KEYS): PublicConfig {
+  const escrow = deepFind(json, /^escrow_?public_?key$/i);
+  const gated = deepFind(json, /^gated_?public_?key$/i);
   if (!escrow || !gated) throw new Error("config is missing escrow/gated public keys");
+  if (!HEX32.test(escrow) || !HEX32.test(gated)) throw new Error("config has malformed encryption keys");
+  if ((pinned.escrow && pinned.escrow.toLowerCase() !== escrow.toLowerCase()) || (pinned.gated && pinned.gated.toLowerCase() !== gated.toLowerCase())) {
+    throw new Error("This server's encryption keys do not match the keys built into Silent Seal — refusing to use it.");
+  }
   const swarm = deepFind(json, /swarm.*gateway/i) ?? "https://api.gateway.ethswarm.org";
   const worldMode = deepFind(json, /world.*mode/i) ?? undefined;
   const baseUrl = deepFind(json, /^base.?url$/i) ?? undefined;

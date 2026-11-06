@@ -43,7 +43,7 @@ async function planAsync(
       plan.items.push({ sealId: id, gated: true, key: "0x" });
     } else {
       try {
-        const k = unwrapKey(s.seal.wrappedKeyEscrow, sk);
+        const k = unwrapKey(s.seal.wrappedKeyEscrow, sk, id);
         plan.items.push({ sealId: id, gated: false, key: `0x${Buffer.from(k).toString("hex")}` });
       } catch (e) {
         plan.skipped.push({ sealId: id, reason: `cannot unwrap escrow key: ${(e as Error).message}` });

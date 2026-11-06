@@ -161,7 +161,8 @@ export function WorldVerifyButton(props: WorldVerifyButtonProps) {
       const res = await fetch(props.rpContextUrl ?? "/api/world/rp-context", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: props.kind, signal: props.signal }),
+        // readers declare the nationality up front: the server binds it to this request's nonce
+        body: JSON.stringify({ kind: props.kind, signal: props.signal, ...(props.kind === "reader" && nat ? { nationality: nat } : {}) }),
       });
       const body = (await res.json().catch(() => null)) as (RpContext & { message?: string; error?: string }) | null;
       if (!res.ok || !body || !body.nonce) throw new Error(body?.message || body?.error || `Could not start World ID (HTTP ${res.status}).`);

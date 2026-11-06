@@ -26,7 +26,7 @@ import { z } from "zod";
 import { buildQuery, buildRequestBody, PAGE_SIZE, parseQueryResponse, SCHEMA, SELECT_ATTRS } from "./src/arkiv";
 import { hexToBytes, utf8 } from "./src/bytes";
 import { encodeReleaseReport } from "./src/report";
-import { buildItems, buildSnapshot, planSweep, type Snapshot } from "./src/sweep";
+import { buildItems, buildSnapshot, pickBatch, planSweep, type Snapshot } from "./src/sweep";
 
 const configSchema = z.object({
   schedule: z.string(),
@@ -62,9 +62,10 @@ function arkivAll(req: HTTPSendRequester, cfg: Config, query: string, attrs: rea
   for (let page = 0; page < cfg.maxPages; page++) {
     const p = arkivPage(req, cfg, query, attrs, page * PAGE_SIZE);
     rows.push(...p.rows);
-    if (p.rows.length < PAGE_SIZE) break;
+    if (p.rows.length < PAGE_SIZE) return rows;
   }
-  return rows;
+  // FAIL CLOSED: deciding on a truncated list could miss a disarm or a live check-in and release wrongly.
+  throw new Error(`Arkiv result truncated at ${cfg.maxPages} pages for "${query}" — refusing to decide on incomplete data`);
 }
 
 /** Node-mode: the 4 bulk queries → compact snapshot as a JSON string (identical across nodes). */
@@ -82,7 +83,9 @@ const fetchWrappedKeys = (req: HTTPSendRequester, cfg: Config, ids: string[]): s
   const out: Record<string, string> = {};
   for (const id of ids) {
     const rows = arkivPage(req, cfg, buildQuery(SCHEMA.seal, cfg.dep, cfg.verifierAddress, id), SELECT_ATTRS.wrappedKey, 0).rows;
-    const w = rows[0]?.wrappedKeyEscrow;
+    // same rule as the snapshot: the earliest-created record for this sealId is the seal
+    const first = [...rows].sort((a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0))[0];
+    const w = first?.wrappedKeyEscrow;
     if (typeof w === "string") out[id] = w;
   }
   return JSON.stringify(out);
@@ -122,7 +125,7 @@ export const onCron = (runtime: Runtime<Config>): string => {
     runtime.log("nothing to release");
     return "idle";
   }
-  const batch = due.slice(0, cfg.maxBatch);
+  const batch = pickBatch(due, now, cfg.maxBatch);
   if (due.length > batch.length) runtime.log(`${due.length - batch.length} more due seal(s) deferred to the next run (batch limit ${cfg.maxBatch})`);
 
   // 3) PUBLIC seals: fetch escrow-wrapped key, unwrap with the escrow secret

@@ -73,3 +73,31 @@ export function computeStatus(i: StatusInput): {
     nextDeadlineRule: next ? next.rule : null,
   };
 }
+
+/**
+ * Has this seal's OWN rule fired, judged only from its Arkiv records (timer passed, or no live heartbeat),
+ * ignoring any "released" marker? Used to refuse release claims that do not match the seal's rule — e.g. a fake
+ * on-chain release event, which must never unlock a gated key or be mirrored as a release.
+ */
+export function ruleHasFired(
+  s: {
+    seal: { releaseAt: number; intervalSec: number; createdAt: number };
+    checkins: { expiresAtSec: number }[];
+    disarm: unknown | null;
+  },
+  now = Math.floor(Date.now() / 1000),
+): boolean {
+  if (s.disarm) return false;
+  const live = s.checkins.filter((c) => c.expiresAtSec > now).map((c) => c.expiresAtSec);
+  return (
+    computeStatus({
+      releaseAt: s.seal.releaseAt,
+      intervalSec: s.seal.intervalSec,
+      createdAt: s.seal.createdAt,
+      disarmed: false,
+      released: false,
+      liveCheckinExpiries: live,
+      now,
+    }).status === "RELEASING"
+  );
+}

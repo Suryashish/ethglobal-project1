@@ -173,6 +173,24 @@ contract SilentReleaseTest is Test {
         assertTrue(sr.isReleased("off"));
     }
 
+    function test_trusted_sender_blocks_fake_reports_through_the_public_mock_forwarder() public {
+        address bot = address(0xB07);
+        sr.setTrustedSender(bot);
+        // anyone else submitting through the (signature-less) forwarder is refused
+        vm.prank(forwarder, address(0xBAD));
+        vm.expectRevert(abi.encodeWithSelector(SilentRelease.UntrustedSender.selector, address(0xBAD)));
+        sr.onReport("", abi.encode(_one(_item("fake", false, abi.encodePacked(bytes32(uint256(1)))))));
+        assertFalse(sr.isReleased("fake"));
+        // the pinned CRE broadcaster gets through
+        vm.prank(forwarder, bot);
+        sr.onReport("", abi.encode(_one(_item("real", false, abi.encodePacked(bytes32(uint256(2)))))));
+        assertTrue(sr.isReleased("real"));
+        // only the owner can change it; zero turns the check off (real DON: the forwarder verifies signatures)
+        vm.prank(address(0xBAD));
+        vm.expectRevert(SilentRelease.NotOwner.selector);
+        sr.setTrustedSender(address(0));
+    }
+
     function test_supportsInterface() public view {
         assertTrue(sr.supportsInterface(type(IReceiver).interfaceId));
         assertTrue(sr.supportsInterface(type(IERC165).interfaceId));

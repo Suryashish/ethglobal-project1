@@ -21,7 +21,8 @@ export type Reply<T> = ({ ok: true } & T) | { ok: false; error: string; code?: s
 
 export type MsgReply = {
   states: Reply<{ states: Record<string, WireState | null> }>;
-  context: Reply<{ baseUrl: string; reader: ReaderToken | null; swarmGateway: string }>;
+  /** The raw reader token never leaves the background: content scripts on x.com / reddit only learn whether it is valid. */
+  context: Reply<{ baseUrl: string; reader: { nationality: string; expiresAt: number } | null; swarmGateway: string }>;
   "refresh-config": Reply<{ config: import("./wire").PublicConfig }>;
   "start-arm": Reply<{}>;
   armed: Reply<{ inserted: boolean }>;

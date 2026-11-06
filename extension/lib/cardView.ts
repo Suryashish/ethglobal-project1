@@ -80,7 +80,8 @@ export function buildCard(doc: Document, sealId: string, ui: CardUi): HTMLElemen
         b.addEventListener("click", () => ui.onVerify?.());
         row.append(b, brand);
       } else if (ui.dec?.status === "denied") {
-        row.append(el(doc, "span", undefined, `🚫 Not available in your country${m.nationality ? ` (${label(m.nationality)})` : ""}`), brand);
+        // never print the reader's verified nationality into the page (the site's own scripts could read it)
+        row.append(el(doc, "span", undefined, "🚫 Not available in your country"), brand);
         card.append(el(doc, "div", "sub", `Only readers from ${m.countries.map(label).join(", ")} can open this.`));
       } else {
         appendOpened(doc, card, row, brand, ui.dec);
