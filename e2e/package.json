@@ -1,0 +1,7 @@
+{
+  "name": "@iigs/e2e-browser",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "vitest run -c vitest.config.ts" },
+  "comment": "node_modules are symlinks to ../extension/node_modules (playwright-core, vitest, @iigs/core). Not part of the pnpm workspace."
+}

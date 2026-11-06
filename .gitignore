@@ -16,3 +16,4 @@ workflows/**/*.wasm
 .DS_Store
 .secrets/
 contract/lib/
+.local-stack/
