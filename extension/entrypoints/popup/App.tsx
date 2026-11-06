@@ -157,126 +157,179 @@ export default function App() {
 
   const toggleCountry = (c: string) => setCountries((l) => (l.includes(c) ? l.filter((x) => x !== c) : [...l, c]));
 
+  const STATUS_LABEL: Record<string, string> = { ARMED: "Armed", RELEASING: "Releasing", RELEASED: "Opened", DISARMED: "Disarmed" };
+  const statusLabel = (st?: string) => (st ? STATUS_LABEL[st] ?? st : "…");
+
   return (
     <>
-      <h1>🔒 Silent Seal</h1>
-      <div className="sub">Seal a post. It opens at a set time unless you disarm it.</div>
+      <header className="top">
+        <Mark />
+        <div className="brandtxt">
+          <h1>Silent Seal</h1>
+          <div className="sub">Posts that open if you go silent</div>
+        </div>
+        <span className={`pill ${readerValid ? "ok" : ""}`} title={readerValid ? "Verified reader" : "Not verified as a reader"}>
+          <i />
+          {readerValid ? label(reader!.nationality) : "Reader"}
+        </span>
+      </header>
 
-      <section>
-        <h2>Read hidden posts</h2>
-        <div className="sub">Sealed posts look like ordinary text. Once one opens, its message appears right under it.</div>
-        <div style={{ marginTop: 8 }} className="row">
-          <button data-testid="scan-page" disabled={scanning} onClick={scanPage}>
+      <section className="card hero">
+        <div className="eyebrow">New sealed post</div>
+        <textarea placeholder="What should open later?" value={text} onChange={(e) => setText(e.target.value)} />
+        <div className="field">
+          <span className="lbl">Opens in</span>
+          <div className="row">
+            <select value={preset} onChange={(e) => setPreset(e.target.value)}>
+              {OPEN_PRESETS.map(([l, s]) => (
+                <option key={s} value={s}>
+                  {l}
+                </option>
+              ))}
+              <option value="custom">Custom date &amp; time…</option>
+            </select>
+            {preset === "custom" && <input type="datetime-local" value={custom} onChange={(e) => setCustom(e.target.value)} />}
+          </div>
+        </div>
+        <label className="switch">
+          <input type="checkbox" checked={hbOn} onChange={(e) => setHbOn(e.target.checked)} />
+          <span className="track" aria-hidden />
+          <span>Open early if I go silent</span>
+        </label>
+        {hbOn && (
+          <div className="field">
+            <span className="lbl">Silent for</span>
+            <select value={hb} onChange={(e) => setHb(e.target.value)}>
+              {HEARTBEAT_PRESETS.map(([l, s]) => (
+                <option key={s} value={s}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div className="field">
+          <span className="lbl">Readers</span>
+          {countries.length > 0 && (
+            <div className="chips">
+              {countries.map((c) => (
+                <span className="chip" key={c}>
+                  {label(c)} <button onClick={() => toggleCountry(c)} aria-label={`remove ${c}`}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <select
+            value=""
+            onChange={(e) => e.target.value && !countries.includes(e.target.value) && setCountries([...countries, e.target.value])}
+          >
+            <option value="">{countries.length ? "Add another country…" : "Anyone (public) — or limit to a country…"}</option>
+            {COUNTRIES.map(([c, n]) => (
+              <option key={c} value={c}>
+                {flag(c)} {c} · {n}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button className="primary block" disabled={busy || !text.trim()} onClick={seal}>
+          <LockIcon /> {busy ? "Sealing…" : "Seal post"}
+        </button>
+        {hbOn && <div className="hint">Opens early if there is no check-in for {formatDuration(Number(hb))}.</div>}
+        {error && <div className="msg err">{error}</div>}
+        {info && <div className="msg ok">{info}</div>}
+      </section>
+
+      <section className="card">
+        <div className="split">
+          <div>
+            <div className="eyebrow">Read hidden posts</div>
+            <div className="sub">Opened seals show their message under the post.</div>
+          </div>
+          <button className="ghost" data-testid="scan-page" disabled={scanning} onClick={scanPage}>
             {scanning ? "Scanning…" : "Scan this page"}
           </button>
         </div>
-        {scanMsg && <div className="okmsg" data-testid="scan-result">{scanMsg}</div>}
+        {scanMsg && <div className="msg ok" data-testid="scan-result">{scanMsg}</div>}
       </section>
 
-      <section>
-        <h2>New sealed post</h2>
-        <textarea placeholder="What should open later?" value={text} onChange={(e) => setText(e.target.value)} />
-        <label>Opens in</label>
-        <div className="row">
-          <select value={preset} onChange={(e) => setPreset(e.target.value)}>
-            {OPEN_PRESETS.map(([l, s]) => (
-              <option key={s} value={s}>
-                {l}
-              </option>
-            ))}
-            <option value="custom">Custom date &amp; time…</option>
-          </select>
-          {preset === "custom" && <input type="datetime-local" value={custom} onChange={(e) => setCustom(e.target.value)} />}
+      <section className="card">
+        <div className="split">
+          <div className="eyebrow">My sealed posts</div>
+          <button className="link" onClick={() => send({ type: "open-vault" })}>Open dashboard ↗</button>
         </div>
-        <label>
-          <input type="checkbox" style={{ width: "auto" }} checked={hbOn} onChange={(e) => setHbOn(e.target.checked)} /> also open early if I go silent for…
-        </label>
-        {hbOn && (
-          <select value={hb} onChange={(e) => setHb(e.target.value)}>
-            {HEARTBEAT_PRESETS.map(([l, s]) => (
-              <option key={s} value={s}>
-                {l}
-              </option>
-            ))}
-          </select>
-        )}
-        <label>Only verified readers from (optional)</label>
-        <div>
-          {countries.map((c) => (
-            <span className="chip" key={c}>
-              {label(c)} <button onClick={() => toggleCountry(c)} aria-label={`remove ${c}`}>×</button>
-            </span>
-          ))}
-        </div>
-        <select
-          value=""
-          onChange={(e) => e.target.value && !countries.includes(e.target.value) && setCountries([...countries, e.target.value])}
-        >
-          <option value="">{countries.length ? "Add another country…" : "Anyone (public) — or add a country…"}</option>
-          {COUNTRIES.map(([c, n]) => (
-            <option key={c} value={c}>
-              {flag(c)} {c} · {n}
-            </option>
-          ))}
-        </select>
-        <div style={{ marginTop: 10 }} className="row">
-          <button disabled={busy || !text.trim()} onClick={seal}>
-            {busy ? "Sealing…" : "Seal"}
-          </button>
-        </div>
-        {hbOn && <div className="sub">Early open if no check-in for {formatDuration(Number(hb))}.</div>}
-        {error && <div className="err">{error}</div>}
-        {info && <div className="okmsg">{info}</div>}
-      </section>
-
-      <section>
-        <h2>My sealed posts</h2>
-        {!mine.length && <div className="sub">Nothing yet.</div>}
+        {!mine.length && <div className="empty">Nothing sealed yet.</div>}
         {mine.map((p) => {
           const s = states[p.sealId];
           return (
             <div className="post" key={p.sealId}>
-              <div className="row">
-                <code>{p.sealId}</code>
-                <span className={`status ${s?.status ?? ""}`} style={{ flex: "none" }}>
-                  {s ? s.status : "…"}
+              <div className="split">
+                <span className={`status ${s?.status ?? ""}`}>
+                  <i />
+                  {statusLabel(s?.status)}
                 </span>
+                <code>{p.sealId}</code>
               </div>
-              {s?.status === "ARMED" && s.nextDeadline && <div className="sub">opens in {formatCountdown(s.nextDeadline - nowSec())}</div>}
-              <div className="row" style={{ marginTop: 4 }}>
+              {s?.status === "ARMED" && s.nextDeadline && <div className="count">opens in {formatCountdown(s.nextDeadline - nowSec())}</div>}
+              <div className="actions">
                 <button className="ghost small" onClick={() => copy(p.post)}>Copy hidden post</button>
                 <button className="ghost small" onClick={() => insert(p.post)}>Insert into current page</button>
               </div>
             </div>
           );
         })}
-        <div style={{ marginTop: 8 }}>
-          <button className="ghost" onClick={() => send({ type: "open-vault" })}>Open dashboard</button>
-        </div>
       </section>
 
-      <section>
-        <h2>Reader verification</h2>
-        {readerValid ? (
+      <section className="card">
+        <div className="split">
           <div>
-            ✅ Verified nationality: {label(reader!.nationality)} <span className="sub">· expires in {formatCountdown((expiresAtMs(reader!.expiresAt) - Date.now()) / 1000)}</span>
+            <div className="eyebrow">Reader verification</div>
+            {readerValid ? (
+              <div className="sub">
+                Verified {label(reader!.nationality)} · expires in {formatCountdown((expiresAtMs(reader!.expiresAt) - Date.now()) / 1000)}
+              </div>
+            ) : (
+              <div className="sub">Needed to open country-gated seals.</div>
+            )}
           </div>
-        ) : (
-          <div className="sub">Not verified. Needed to open country-gated seals.</div>
-        )}
-        <div style={{ marginTop: 6 }}>
           <button className="ghost" onClick={() => send({ type: "open-verify" })}>Verify nationality</button>
         </div>
       </section>
 
-      <section>
-        <h2>Settings</h2>
-        <label style={{ marginTop: 0 }}>Silent Seal web app URL</label>
+      <details className="card settings">
+        <summary>Settings</summary>
+        <span className="lbl">Silent Seal web app URL</span>
         <div className="row">
           <input value={baseDraft} onChange={(e) => setBaseDraft(e.target.value)} />
           <button className="small" onClick={saveBase} disabled={baseDraft === baseUrl}>Save</button>
         </div>
-      </section>
+      </details>
     </>
+  );
+}
+
+/** Same mark as the web app: a wax seal with a heartbeat pressed into it. */
+function Mark() {
+  return (
+    <svg className="mark" viewBox="0 0 64 64" aria-hidden>
+      <defs>
+        <radialGradient id="wax" cx="38%" cy="32%" r="75%">
+          <stop offset="0" stopColor="#c44a3e" />
+          <stop offset="0.55" stopColor="#a8352b" />
+          <stop offset="1" stopColor="#7d241c" />
+        </radialGradient>
+      </defs>
+      <circle cx="32" cy="32" r="30" fill="url(#wax)" />
+      <circle cx="32" cy="32" r="21.5" fill="none" stroke="#7a221a" strokeOpacity="0.55" strokeWidth="1.8" />
+      <path d="M14 34h8.5l4.2-11 7 20 4.3-9H50" fill="none" stroke="#6e1d16" strokeWidth="3.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="4" y="11" width="16" height="10" rx="2.5" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
   );
 }

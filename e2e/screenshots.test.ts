@@ -37,7 +37,7 @@ beforeAll(async () => {
 afterAll(async () => { console.log("ERRORS:\n" + (errors.join("\n") || "(none)")); await browser?.close(); });
 
 async function fillAndArm(p: Page, o: { text: string; kind: "TIMER" | "HEARTBEAT"; preset: string; shots?: boolean }): Promise<string> {
-  await go(p, `${APP}/vault/new`);
+  await go(p, `${APP}/app/new`);
   await p.getByRole("tab", { name: "Write text" }).waitFor();
   await p.waitForTimeout(1500);
   if (o.shots) await shot(p, "02-vault-new-empty");
@@ -72,7 +72,7 @@ describe("web", () => {
   }, T);
 
   it("06 vault + 07/08 check-in", async () => {
-    await go(page, `${APP}/vault`);
+    await go(page, `${APP}/app`);
     await page.evaluate((add) => { const k = "iigs.seals"; const l = JSON.parse(localStorage.getItem(k) || "[]"); localStorage.setItem(k, JSON.stringify([...new Set([...l, ...add])])); }, [RELEASED_TEXT, "g2mzs8qiix5gp8cb"]);
     await page.reload();
     await page.getByRole("button", { name: "I'm OK" }).first().waitFor();
@@ -121,7 +121,7 @@ describe("web", () => {
   }, T);
 
   it("14 disarm → cancelled", async () => {
-    await go(page, `${APP}/vault`);
+    await go(page, `${APP}/app`);
     const card = page.locator("div.space-y-4", { has: page.locator(`a[href='/s/${ids.D}']`) }).first();
     await card.getByRole("button", { name: "Disarm" }).click();
     await page.getByRole("button", { name: "Disarm with World ID" }).click();

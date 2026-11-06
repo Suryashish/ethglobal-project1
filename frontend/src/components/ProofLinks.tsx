@@ -35,13 +35,13 @@ export function ProofLinks({
             href={l.href}
             target="_blank"
             rel="noreferrer noopener"
-            className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface-2 px-3 py-2 text-sm hover:border-[#3a3a42]"
+            className="flex items-center justify-between gap-3 group rounded-xl border border-line bg-surface px-4 py-3 text-sm transition-colors hover:border-line-strong"
           >
             <span>
               <span className="block text-fg">{l.label}</span>
-              <span className="block font-mono text-xs text-muted">{l.sub}</span>
+              <span className="block font-mono text-xs text-faint">{l.sub}</span>
             </span>
-            <ExternalLink className="size-4 shrink-0 text-muted" aria-hidden />
+            <ExternalLink className="size-4 shrink-0 text-faint transition-colors group-hover:text-fg" aria-hidden />
           </a>
         </li>
       ))}

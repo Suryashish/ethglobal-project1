@@ -241,7 +241,7 @@ export default defineContentScript({
           const left = Number(n.getAttribute("data-deadline")) - now;
           const heartbeat = n.getAttribute("data-rule") === "HEARTBEAT";
           const when = formatCountdown(left);
-          n.textContent = heartbeat ? `🔒 Sealed · opens in ${when} unless the author checks in` : `🔒 Sealed · opens in ${when}`;
+          n.textContent = heartbeat ? `Sealed · opens in ${when} unless the author checks in` : `Sealed · opens in ${when}`;
         });
       }
       for (const [id, e] of entries) {

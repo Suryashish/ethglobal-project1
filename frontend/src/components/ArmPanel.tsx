@@ -31,9 +31,9 @@ export function ArmPanel({ draft, onArmed }: { draft: SealDraft; onArmed: (r: Ar
 
   return (
     <div className="space-y-5">
-      <dl className="grid gap-3 rounded-lg border border-line bg-bg p-4 text-sm sm:grid-cols-[9rem_1fr]">
+      <dl className="grid gap-x-4 gap-y-3 rounded-xl border border-line bg-field p-5 text-sm sm:grid-cols-[8rem_1fr]">
         <dt className="text-muted">Seal id</dt>
-        <dd className="font-mono">{draft.sealId}</dd>
+        <dd className="font-mono text-sealed">{draft.sealId}</dd>
         {draft.title ? (
           <>
             <dt className="text-muted">Public title</dt>
@@ -47,8 +47,8 @@ export function ArmPanel({ draft, onArmed }: { draft: SealDraft; onArmed: (r: Ar
         <dt className="text-muted">Stored on</dt>
         <dd>{draft.contentType === "swarm" ? `Swarm (${draft.swarmRef?.slice(0, 12)}…) · ${draft.sizeBytes} B encrypted` : `Arkiv (inline) · ${draft.sizeBytes} B encrypted`}</dd>
       </dl>
-      <div className="flex items-start gap-3 rounded-lg border border-sealed/30 bg-sealed/5 p-4 text-sm">
-        <ShieldCheck className="mt-0.5 size-5 shrink-0 text-sealed" aria-hidden />
+      <div className="flex items-start gap-3 rounded-xl border border-line bg-surface-2/70 p-4 text-sm leading-relaxed">
+        <ShieldCheck className="mt-0.5 size-5 shrink-0 text-released" aria-hidden />
         <p className="text-muted">
           <span className="text-fg">Selfie Check, because the risk is someone else holding your phone.</span> The proof is bound to this exact
           ciphertext and rule, and ties the seal to your face. Only the same human can ever check in, disarm or change it.
@@ -59,7 +59,7 @@ export function ArmPanel({ draft, onArmed }: { draft: SealDraft; onArmed: (r: Ar
         signal={signal}
         label="Arm with World ID"
         disabled={issuedAt === 0}
-        className={buttonStyles({ variant: "primary", size: "lg" })}
+        className={buttonStyles({ variant: "primary", size: "lg", className: "w-full sm:w-auto" })}
         onVerified={onVerified}
       />
     </div>

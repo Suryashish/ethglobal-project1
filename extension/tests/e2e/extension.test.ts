@@ -121,7 +121,7 @@ function startApi(): Promise<Server> {
     if (url.pathname.startsWith("/cover/")) return res.writeHead(200, { "content-type": "text/plain; charset=utf-8" }).end(encodeCover(url.pathname.slice(7)));
     if (url.pathname === "/verify-reader")
       return res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(`<!doctype html><title>verify</title><button id=go onclick="window.postMessage({source:'iigs-web',type:'IIGS_READER_TOKEN',token:'tok-IN',nationality:'IN',expiresAt:Math.floor(Date.now()/1000)+43200},location.origin)">verify</button>`);
-    if (url.pathname === "/vault") return res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end("<title>vault</title>vault");
+    if (url.pathname === "/app") return res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end("<title>vault</title>vault");
     res.writeHead(404, cors).end("nf");
   });
   return new Promise((r) => server.listen(3999, () => r(server)));

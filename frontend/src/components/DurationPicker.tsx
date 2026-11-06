@@ -28,7 +28,7 @@ export function DurationPicker({
 
   return (
     <fieldset className="space-y-3">
-      <legend className="mb-2 text-sm font-medium">{legend}</legend>
+      <legend className="mb-3 text-sm font-medium text-ink-soft">{legend}</legend>
       <div className="flex flex-wrap gap-2">
         {PRESETS.map((p) => (
           <button
@@ -68,7 +68,7 @@ export function DurationPicker({
               setN(v);
               onChange(Math.max(min, v * UNITS[unit]));
             }}
-            className="h-10 w-24 rounded-md border border-line bg-bg px-3 text-sm"
+            className="h-10 w-24 rounded-lg border border-line bg-field px-3 text-sm tabular"
           />
           <select
             value={unit}
@@ -78,7 +78,7 @@ export function DurationPicker({
               setUnit(u);
               onChange(Math.max(min, n * UNITS[u]));
             }}
-            className="h-10 rounded-md border border-line bg-bg px-3 text-sm"
+            className="h-10 rounded-lg border border-line bg-field px-3 text-sm"
           >
             {Object.keys(UNITS).map((u) => (
               <option key={u}>{u}</option>
@@ -86,13 +86,13 @@ export function DurationPicker({
           </select>
         </div>
       ) : null}
-      <p className="text-xs text-muted">= {humanInterval(value)}{min ? ` (minimum ${humanInterval(min)})` : ""}</p>
+      <p className="text-[13px] text-faint">That is {humanInterval(value)}{min ? ` (minimum ${humanInterval(min)})` : ""}</p>
     </fieldset>
   );
 }
 
 const chip = (on: boolean) =>
   cn(
-    "h-9 rounded-md border px-4 text-sm transition-colors cursor-pointer",
-    on ? "border-sealed bg-sealed/15 text-sealed" : "border-line bg-surface-2 text-muted hover:text-fg",
+    "h-9 cursor-pointer rounded-md border px-3.5 text-[14px] transition-colors",
+    on ? "border-fg bg-fg text-[#fbf8f2]" : "border-line bg-field text-ink-soft hover:border-line-strong hover:text-fg",
   );

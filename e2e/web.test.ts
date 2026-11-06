@@ -78,7 +78,7 @@ describe("vault flows", () => {
     ids.timer = await createSeal(page, { text: "timer secret from e2e", kind: "TIMER", preset: "2 min" });
     await see(page, /Armed\. The switch is live/);
     await shot(page, "4a-seal-after-arm");
-    await page.goto(`${APP}/vault`);
+    await page.goto(`${APP}/app`);
     const card = page.locator(`div:has(> div a[href='/s/${ids.timer}'])`).first();
     await page.locator(`a[href='/s/${ids.timer}']`).first().waitFor({ timeout: 20_000 });
     await see(page, /armed/i);
@@ -91,7 +91,7 @@ describe("vault flows", () => {
   it("4b. HEARTBEAT 2 min: check-in as THIEF refused, as Author succeeds", async () => {
     ids.hb = await createSeal(page, { text: "heartbeat secret from e2e", kind: "HEARTBEAT", preset: "2 min" });
     saveState({ hb: ids.hb, hbArmedAt: Date.now() });
-    await page.goto(`${APP}/vault`);
+    await page.goto(`${APP}/app`);
     const okBtn = page.getByRole("button", { name: "I'm OK" }).first();
     await okBtn.waitFor({ timeout: 20_000 });
     await okBtn.click();
@@ -108,7 +108,7 @@ describe("vault flows", () => {
   it("4d. Disarm a seal → reader page shows cancelled", async () => {
     ids.dis = await createSeal(page, { text: "to be disarmed", kind: "TIMER", preset: "5 days" });
     saveState({ disarmed: ids.dis });
-    await page.goto(`${APP}/vault`);
+    await page.goto(`${APP}/app`);
     const card = page.locator("div.space-y-4", { has: page.locator(`a[href='/s/${ids.dis}']`) }).first();
     await card.getByRole("button", { name: "Disarm" }).click();
     await page.getByRole("button", { name: "Disarm with World ID" }).click();

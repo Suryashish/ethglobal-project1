@@ -226,7 +226,7 @@ async function handle(m: Msg, sender: Sender): Promise<unknown> {
       await browser.tabs.create({ url: (await getBaseUrl()) + "/verify-reader" });
       return { ok: true };
     case "open-vault":
-      await browser.tabs.create({ url: (await getBaseUrl()) + "/vault" });
+      await browser.tabs.create({ url: (await getBaseUrl()) + "/app" });
       return { ok: true };
     case "apply-base-url":
       cache.clear();

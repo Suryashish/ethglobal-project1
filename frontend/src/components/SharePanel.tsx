@@ -14,8 +14,8 @@ export function SharePanel({ seal, baseUrl, showPost = true }: { seal: Pick<Seal
       {showPost ? (
         <div>
           <Label>Hidden post</Label>
-          <p data-cover-phrase className="mt-2 break-words rounded-md border border-line bg-bg px-3 py-2 text-sm">{phrase}</p>
-          <p className="mt-2 text-xs text-muted">
+          <p data-cover-phrase className="mt-2 break-words rounded-xl border border-line bg-field px-4 py-3 font-serif text-[17px] leading-relaxed">{phrase}</p>
+          <p className="mt-2 text-xs leading-relaxed text-faint">
             Post this exactly as it is. It reads like an ordinary post and says nothing about a seal. Once the seal opens, the Silent
             Seal extension finds it on X and Reddit and shows the decrypted message right under it.
           </p>
@@ -27,10 +27,10 @@ export function SharePanel({ seal, baseUrl, showPost = true }: { seal: Pick<Seal
       <div>
         <Label>Share link</Label>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-          <code className="flex-1 break-all rounded-md border border-line bg-bg px-3 py-2 font-mono text-sm">{link}</code>
+          <code className="flex-1 break-all rounded-lg border border-line bg-field px-3.5 py-2.5 font-mono text-[13px]">{link}</code>
           <CopyButton text={link} label="Copy link" />
         </div>
-        <p className="mt-2 text-xs text-muted">The public seal page: a live countdown, for people who want to know a seal exists.</p>
+        <p className="mt-2 text-xs leading-relaxed text-faint">The public seal page: a live countdown, for people who want to know a seal exists.</p>
       </div>
     </Card>
   );

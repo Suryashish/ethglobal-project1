@@ -11,6 +11,7 @@ export function Countdown({ to, className, big = false }: { to: number; classNam
       className={cn("tabular font-mono", big ? "text-4xl sm:text-6xl tracking-tight" : "text-sm", className)}
       suppressHydrationWarning
       aria-live="off"
+      data-countdown
     >
       {now === 0 ? "—" : left <= 0 ? "now" : formatDuration(left)}
     </span>

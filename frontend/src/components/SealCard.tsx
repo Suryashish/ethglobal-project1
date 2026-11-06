@@ -1,5 +1,6 @@
 "use client";
 import type { SealState } from "@iigs/core";
+import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -32,30 +33,36 @@ export function SealCard({ state, onChanged }: { state: SealState; onChanged: ()
   const newRelease = Math.max(seal.releaseAt, now) + extendBy;
 
   return (
-    <Card className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Link href={`/s/${seal.sealId}`} className="block truncate text-lg font-medium hover:text-sealed">
-            {seal.title || "Untitled seal"}
-          </Link>
-          <p className="font-mono text-xs text-muted">{seal.sealId}</p>
-        </div>
+    <Card className="space-y-4 transition-colors hover:border-line-strong">
+      <div className="flex items-start justify-between gap-3">
         <StatusChip status={status} />
+        <span className="font-mono text-xs text-faint">{seal.sealId}</span>
       </div>
-      <p className="text-sm text-muted first-letter:uppercase">
-        {ruleText(seal)} · {seal.audience === "GATED" ? `readers from ${seal.countries.join(", ")}` : "public"}
-      </p>
+      <div className="min-w-0">
+        <Link href={`/s/${seal.sealId}`} className="block truncate font-serif text-[26px] leading-tight transition-colors hover:text-sealed">
+          {seal.title || "Untitled seal"}
+        </Link>
+        <p className="mt-1.5 text-sm text-muted first-letter:uppercase">
+          {ruleText(seal)} · {seal.audience === "GATED" ? `readers from ${seal.countries.join(", ")}` : "public"}
+        </p>
+      </div>
       {status === "ARMED" && state.nextDeadline ? (
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted">{deadlineLabel(state.nextDeadlineRule)}</p>
-          <Countdown to={state.nextDeadline} className="text-2xl text-sealed" />
+        <div className="rounded-xl border border-line bg-field px-4 py-3">
+          <p className="text-[13px] text-muted">{deadlineLabel(state.nextDeadlineRule)}</p>
+          <Countdown to={state.nextDeadline} className="mt-0.5 block text-2xl font-medium text-sealed" />
         </div>
       ) : null}
-      {status === "RELEASING" ? <p className="text-sm text-sealed">The rule fired. Waiting for the Chainlink CRE release.</p> : null}
-      {status === "DISARMED" ? <p className="text-sm text-muted">Cancelled. It will never open.</p> : null}
-      {status === "RELEASED" ? <p className="text-sm text-released">Released{state.release ? ` ${formatDateTime(state.release.releasedAt)}` : ""}.</p> : null}
+      {status === "RELEASING" ? (
+        <p className="rounded-xl border border-sealed/20 bg-sealed-soft px-4 py-3 text-sm text-sealed">The rule fired. Waiting for the Chainlink CRE release.</p>
+      ) : null}
+      {status === "DISARMED" ? <p className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm text-muted">Cancelled. It will never open.</p> : null}
+      {status === "RELEASED" ? (
+        <p className="rounded-xl border border-released/20 bg-released-soft px-4 py-3 text-sm text-released">
+          Released{state.release ? ` ${formatDateTime(state.release.releasedAt)}` : ""}.
+        </p>
+      ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
         {status === "ARMED" && seal.intervalSec > 0 ? (
           <OwnerActionButton
             action="checkin"
@@ -75,7 +82,9 @@ export function SealCard({ state, onChanged }: { state: SealState; onChanged: ()
             <Button size="sm" variant="danger" onClick={() => setDlg("disarm")}>Disarm</Button>
           </>
         ) : null}
-        <Link href={`/s/${seal.sealId}`} className="ml-auto text-sm text-muted hover:text-fg">Open reader page →</Link>
+        <Link href={`/s/${seal.sealId}`} className="ml-auto inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-fg">
+          Seal page <ArrowUpRight className="size-3.5" aria-hidden />
+        </Link>
       </div>
 
       <Modal

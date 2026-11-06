@@ -23,8 +23,8 @@ export function VerifyReader() {
   return (
     <div className="mx-auto max-w-xl space-y-6">
       <header>
-        <h1 className="font-serif text-3xl">Verify as a reader</h1>
-        <p className="mt-2 text-muted">
+        <h1 className="font-serif text-[44px] leading-none tracking-[-0.02em] sm:text-[56px]">Verify as a reader</h1>
+        <p className="mt-4 text-[17px] leading-relaxed text-ink-soft">
           Some sealed messages open only for readers of chosen countries. Prove your nationality once with a World ID passport check;
           this browser (and the Silent Seal extension) remembers it for 12 hours.
         </p>
@@ -36,7 +36,7 @@ export function VerifyReader() {
           </p>
         ) : null}
         <ReaderVerify onSession={done} label={session ? "Verify again" : "Verify nationality with World ID"} />
-        <p className="text-xs text-muted">We learn your nationality and nothing else: no name, no birthdate, no document number.</p>
+        <p className="text-xs text-faint">We learn your nationality and nothing else: no name, no birthdate, no document number.</p>
       </Card>
     </div>
   );

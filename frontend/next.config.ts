@@ -9,6 +9,13 @@ const SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    // the app moved from /vault to /app; keep old links (and bookmarks) working
+    return [
+      { source: "/vault", destination: "/app", permanent: false },
+      { source: "/vault/new", destination: "/app/new", permanent: false },
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

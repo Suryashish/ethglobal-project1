@@ -1,4 +1,4 @@
-// Generates simple lock-glyph PNG icons (no external deps). Run: node scripts/gen-icons.mjs
+// Generates the "flat heartbeat" mark PNG icons (same glyph as the web app) (no external deps). Run: node scripts/gen-icons.mjs
 import { deflateSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -27,20 +27,27 @@ const inRR = (x, y, x0, y0, x1, y1, r) => {
   const cx = Math.min(Math.max(x, x0 + r), x1 - r), cy = Math.min(Math.max(y, y0 + r), y1 - r);
   return (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
 };
+// The mark: a wax seal with a heartbeat pressed into it (frontend/src/components/Logo.tsx, viewBox 64).
+const PULSE = [[14, 34], [22.5, 34], [26.7, 23], [33.7, 43], [38, 34], [50, 34]].map(([x, y]) => [x / 64, y / 64]);
+function distToSeg(px, py, [ax, ay], [bx, by]) {
+  const dx = bx - ax, dy = by - ay;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+let STROKE = 0.03;
+const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 // shapes in a unit square [0,1]^2; returns [r,g,b,a] 0..255 or null
 function sample(x, y) {
-  if (inRR(x, y, 0, 0, 1, 1, 0.22)) {
-    // keyhole
-    if ((x - 0.5) ** 2 + (y - 0.62) ** 2 <= 0.055 ** 2 || (Math.abs(x - 0.5) <= 0.025 && y > 0.62 && y < 0.76)) return [20, 24, 40, 255];
-    // body
-    if (inRR(x, y, 0.24, 0.46, 0.76, 0.84, 0.05)) return [255, 255, 255, 255];
-    // shackle (ring)
-    const d = Math.hypot(x - 0.5, y - 0.36);
-    if (y <= 0.5 && d <= 0.2 && d >= 0.1) return [255, 255, 255, 255];
-    if (y > 0.36 && y <= 0.5 && (Math.abs(x - 0.34) <= 0.05 || Math.abs(x - 0.66) <= 0.05)) return [255, 255, 255, 255];
-    return [79, 70, 229, 255];
-  }
-  return null;
+  const r = Math.hypot(x - 0.5, y - 0.5);
+  if (r > 0.47) return null;
+  let d = Infinity;
+  for (let i = 0; i < PULSE.length - 1; i++) d = Math.min(d, distToSeg(x, y, PULSE[i], PULSE[i + 1]));
+  if (d <= STROKE) return [110, 29, 22, 255];
+  if (Math.abs(r - 0.336) < 0.014) return [122, 34, 26, 255];
+  // wax lit from the top left
+  const l = Math.min(1, Math.hypot(x - 0.38, y - 0.32) / 0.6);
+  const c = l < 0.55 ? mix([196, 74, 62], [168, 53, 43], l / 0.55) : mix([168, 53, 43], [125, 36, 28], (l - 0.55) / 0.45);
+  return [...c, 255];
 }
 function png(size) {
   const SS = 4;
@@ -62,5 +69,8 @@ function png(size) {
   ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 6;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
-for (const s of [16, 32, 48, 128]) writeFileSync(join(out, `${s}.png`), png(s));
+for (const s of [16, 32, 48, 128]) {
+  STROKE = s <= 16 ? 0.06 : s <= 32 ? 0.045 : 0.032; // thicker line where pixels are scarce
+  writeFileSync(join(out, `${s}.png`), png(s));
+}
 console.log("icons written to", out);

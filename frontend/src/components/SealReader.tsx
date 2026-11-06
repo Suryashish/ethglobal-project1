@@ -58,7 +58,8 @@ export function SealReader({ id }: { id: string }) {
   if (loaded === undefined) {
     return (
       <div className="mx-auto max-w-2xl">
-        <Card>
+        <Card className="flex items-center gap-3">
+          {error ? null : <span className="size-2 animate-pulse rounded-full bg-sealed" aria-hidden />}
           <p className={error ? "text-danger" : "text-muted"} role="status">
             {error ? `Could not reach Arkiv: ${error}` : "Reading the seal from Arkiv…"}
           </p>
@@ -69,9 +70,9 @@ export function SealReader({ id }: { id: string }) {
   if (loaded.state === null) {
     return (
       <div className="mx-auto max-w-2xl">
-        <Card className="space-y-3 text-center">
-          <SearchX className="mx-auto size-8 text-muted" aria-hidden />
-          <h1 className="text-xl font-semibold">Seal not found</h1>
+        <Card className="space-y-3 py-12 text-center">
+          <SearchX className="mx-auto size-8 text-faint" aria-hidden />
+          <h1 className="font-serif text-3xl">Seal not found</h1>
           <p className="text-sm text-muted">
             There is no seal <span className="font-mono">{id}</span> on Arkiv. If it was just armed, it can take a few seconds to
             appear; this page keeps checking.
@@ -87,7 +88,7 @@ export function SealReader({ id }: { id: string }) {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <header className="space-y-3">
+      <header className="space-y-4 pb-2">
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip status={status} />
           <Badge tone="neutral">
@@ -95,21 +96,21 @@ export function SealReader({ id }: { id: string }) {
             Armed by a verified human — World ID Selfie Check
           </Badge>
         </div>
-        <h1 className="font-serif text-3xl sm:text-4xl">{seal.title || "A sealed message"}</h1>
-        <p className="font-mono text-xs text-muted">{seal.sealId}</p>
+        <h1 className="text-balance font-serif text-[44px] leading-[1.02] tracking-[-0.02em] sm:text-[56px]">{seal.title || "A sealed message"}</h1>
+        <p className="font-mono text-xs text-faint">{seal.sealId}</p>
       </header>
 
       {justArmed && mine ? (
-        <Card className="border-sealed/40 bg-sealed/5">
-          <p className="font-medium text-sealed">Armed. The switch is live.</p>
-          <p className="mt-1 text-sm text-muted">Post the hidden text below on X or Reddit, or share the link. Keep this device: it is how you find your seal in the Vault.</p>
+        <Card className="border-released/25 bg-released-soft/50">
+          <p className="font-medium text-released">Armed. The switch is live.</p>
+          <p className="mt-1 text-sm text-muted">Post the hidden text below on X or Reddit, or share the link. Keep this device: it is how you find your seal in the app.</p>
         </Card>
       ) : null}
 
       {status === "ARMED" ? (
-        <Card className="space-y-4 text-center">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted">{deadlineLabel(state.nextDeadlineRule)}</p>
-          {state.nextDeadline ? <Countdown to={state.nextDeadline} big className="text-sealed" /> : null}
+        <Card className="relative space-y-4 overflow-hidden py-10 text-center">
+          <p className="relative font-serif text-[17px] italic text-muted">{deadlineLabel(state.nextDeadlineRule)}</p>
+          {state.nextDeadline ? <Countdown to={state.nextDeadline} big className="relative block text-sealed" /> : null}
           <p className="mx-auto max-w-md text-muted first-letter:uppercase">{ruleText(seal)}</p>
           {seal.intervalSec > 0 ? (
             <p className="mx-auto max-w-md text-sm text-muted">
@@ -117,7 +118,7 @@ export function SealReader({ id }: { id: string }) {
             </p>
           ) : null}
           {seal.audience === "GATED" ? (
-            <p className="flex items-center justify-center gap-2 text-sm text-sealed">
+            <p className="flex items-center justify-center gap-2 text-sm text-ink-soft">
               <Globe2 className="size-4" aria-hidden /> {audienceText(seal)}
             </p>
           ) : null}
@@ -125,17 +126,17 @@ export function SealReader({ id }: { id: string }) {
       ) : null}
 
       {status === "RELEASING" ? (
-        <Card className="space-y-2 text-center">
-          <Hourglass className="mx-auto size-8 text-sealed" aria-hidden />
-          <p className="text-lg font-medium">The rule fired</p>
+        <Card className="space-y-2 py-10 text-center">
+          <Hourglass className="mx-auto size-7 animate-pulse text-sealed" aria-hidden />
+          <p className="font-serif text-2xl">The rule fired</p>
           <p className="text-sm text-muted">Waiting for the Chainlink CRE release on Sepolia. This page opens it automatically.</p>
         </Card>
       ) : null}
 
       {status === "DISARMED" ? (
-        <Card className="space-y-2 text-center">
-          <Ban className="mx-auto size-8 text-muted" aria-hidden />
-          <p className="text-lg font-medium">Cancelled by the author.</p>
+        <Card className="space-y-2 py-10 text-center">
+          <Ban className="mx-auto size-7 text-faint" aria-hidden />
+          <p className="font-serif text-2xl">Cancelled by the author.</p>
           <p className="text-sm text-muted">This will never open.</p>
         </Card>
       ) : null}
@@ -144,12 +145,12 @@ export function SealReader({ id }: { id: string }) {
 
       {mine && cfg ? <SharePanel seal={seal} baseUrl={cfg.baseUrl} showPost={seal.contentType === "inline" || seal.source === "extension"} /> : null}
 
-      <section aria-labelledby="proof" className="space-y-3">
-        <h2 id="proof" className="flex items-center gap-2 text-sm font-medium text-muted">
-          <Radio className="size-4" aria-hidden /> Proof
+      <section aria-labelledby="proof" className="space-y-3 pt-4">
+        <h2 id="proof" className="flex items-center gap-2 font-serif text-[22px] text-fg">
+          <Radio className="size-4 text-muted" aria-hidden /> Proof
         </h2>
         <ProofLinks state={state} swarmGateway={cfg?.swarmGateway} sepoliaExplorer={cfg?.sepoliaExplorer} />
-        <p className="text-xs text-muted">
+        <p className="text-xs text-faint">
           {loaded.via === "arkiv"
             ? "This page read the seal directly from Arkiv in your browser."
             : "Arkiv could not be reached from your browser; this page used the server as a relay."}{" "}

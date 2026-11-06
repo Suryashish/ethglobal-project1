@@ -44,11 +44,11 @@ export async function mockVerify(page: Page, opts: { identity: "author" | "thief
   if (opts.expectClose !== false) await dlg.waitFor({ state: "detached", timeout: 120_000 });
 }
 
-/** Fills /vault/new and arms. Returns sealId. */
+/** Fills /app/new and arms. Returns sealId. */
 export async function createSeal(page: Page, o: {
   text: string; kind: "TIMER" | "HEARTBEAT"; preset: string; audience?: "PUBLIC" | "GATED"; countries?: string[]; title?: string;
 }): Promise<string> {
-  await page.goto(`${APP}/vault/new`);
+  await page.goto(`${APP}/app/new`);
   await page.getByRole("tab", { name: "Write text" }).click();
   await page.locator("textarea").fill(o.text);
   if (o.title) await page.locator("label:has-text('Public title') input").fill(o.title);

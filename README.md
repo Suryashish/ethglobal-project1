@@ -103,7 +103,7 @@ Tests: `pnpm -r test` (core, world, frontend, worker, extension unit) · `pnpm -
 ```
 packages/core      seal/open, key wrap, post format, release rule, signals, CRE report ABI, Arkiv schemas & queries
 packages/world     World ID: IDKit widgets (live) + simulator (dev), server-side verification
-frontend/          Next.js Vault, reader /s/[id], /arm + /verify-reader handoff pages, API routes
+frontend/          Next.js landing `/` + app `/app`, reader /s/[id], /arm + /verify-reader handoff pages, API routes
 extension/         Silent Seal (WXT, MV3)
 worker/            release mirror (chain → Arkiv), CRE simulate runner, dev sweeper (local stand-in for CRE)
 contract/          Foundry: SilentRelease.sol + tests + deploy script

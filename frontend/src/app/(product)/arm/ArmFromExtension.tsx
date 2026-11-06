@@ -38,23 +38,23 @@ export function ArmFromExtension() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <header>
-        <h1 className="font-serif text-3xl">Arm your sealed post</h1>
-        <p className="mt-2 text-muted">The Silent Seal extension encrypted this on your device. One face check arms it.</p>
+        <h1 className="font-serif text-[44px] leading-none tracking-[-0.02em] sm:text-[56px]">Arm your sealed post</h1>
+        <p className="mt-4 text-[17px] text-ink-soft">The Silent Seal extension encrypted this on your device. One face check arms it.</p>
       </header>
       {armed ? (
-        <Card className="space-y-4 border-sealed/40">
+        <Card className="space-y-4 border-sealed/30">
           <p className="font-medium text-sealed">Armed. Go back to the extension: your post is ready to insert.</p>
-          <p data-cover-phrase className="break-words rounded-md border border-line bg-bg p-3 text-sm">{armed.post}</p>
+          <p data-cover-phrase className="break-words rounded-xl border border-line bg-field px-4 py-3 font-serif text-[17px] leading-relaxed">{armed.post}</p>
           <ShareButtons phrase={armed.post} />
           <div className="flex flex-wrap gap-2">
             <Link href={`/s/${armed.res.sealId}`} className={buttonStyles({ size: "sm" })}>View seal</Link>
-            <Link href="/vault" className={buttonStyles({ size: "sm", variant: "ghost" })}>Open vault</Link>
+            <Link href="/app" className={buttonStyles({ size: "sm", variant: "ghost" })}>Open vault</Link>
           </div>
         </Card>
       ) : state === null ? (
         <p className="text-muted" role="status">Reading the draft…</p>
       ) : state.error ? (
-        <Card className="border-danger/40"><p role="alert" className="text-danger">{state.error}</p></Card>
+        <Card className="border-danger/30"><p role="alert" className="text-danger">{state.error}</p></Card>
       ) : (
         <Card><ArmPanel draft={state.draft!} onArmed={onArmed} /></Card>
       )}

@@ -83,7 +83,7 @@ export function ReleasedView({ state }: { state: SealState }) {
   }
   if (phase.t === "error") {
     return (
-      <Card className="border-danger/40">
+      <Card className="border-danger/30">
         <p className="font-medium text-danger">Could not open this seal</p>
         <p className="mt-1 text-sm text-muted">{phase.msg}</p>
       </Card>
@@ -93,7 +93,7 @@ export function ReleasedView({ state }: { state: SealState }) {
     return (
       <Card className="space-y-4">
         <div className="flex items-center gap-3">
-          <Globe2 className="size-6 text-sealed" aria-hidden />
+          <Globe2 className="size-6 text-muted" aria-hidden />
           <p className="text-lg font-medium">Visible to verified readers from {countries}</p>
         </div>
         <p className="text-sm text-muted">
@@ -106,7 +106,7 @@ export function ReleasedView({ state }: { state: SealState }) {
   }
   if (phase.t === "denied") {
     return (
-      <Card className="border-danger/40">
+      <Card className="border-danger/30">
         <p className="text-lg font-medium text-danger">Not available in your country</p>
         <p className="mt-1 text-sm text-muted">
           You verified as {flag(phase.nationality)} {phase.nationality}. This seal is visible to readers from {countries}.
@@ -132,14 +132,14 @@ function Opened({ env }: { env: Envelope }) {
 
   if (h.kind === "text") {
     return (
-      <Card className="border-released/40">
+      <Card className="border-released/30">
         <Label className="text-released">Decrypted in your browser</Label>
-        <p className="mt-3 whitespace-pre-wrap break-words font-serif text-lg leading-relaxed">{new TextDecoder().decode(env.body)}</p>
+        <p className="mt-4 whitespace-pre-wrap break-words font-serif text-2xl leading-snug">{new TextDecoder().decode(env.body)}</p>
       </Card>
     );
   }
   return (
-    <Card className="space-y-4 border-released/40">
+    <Card className="space-y-4 border-released/30">
       <Label className="text-released">Decrypted in your browser</Label>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="flex items-center gap-2">
@@ -151,7 +151,7 @@ function Opened({ env }: { env: Envelope }) {
           <a
             href={url}
             download={h.name}
-            className="inline-flex h-10 items-center gap-2 rounded-md bg-released px-4 text-sm font-medium text-[#04130c] hover:bg-[#5ddba0]"
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-released px-4 text-sm font-medium text-white transition hover:brightness-110"
           >
             <Download className="size-4" aria-hidden /> Download
           </a>
@@ -159,10 +159,10 @@ function Opened({ env }: { env: Envelope }) {
       </div>
       {url && PREVIEW_IMG.test(mime) ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={h.name} className="max-h-[70vh] w-full rounded-lg border border-line bg-bg object-contain" />
+        <img src={url} alt={h.name} className="max-h-[70vh] w-full rounded-xl border border-line bg-bg object-contain" />
       ) : null}
       {url && mime === "application/pdf" ? (
-        <object data={url} type="application/pdf" className="h-[70vh] w-full rounded-lg border border-line" aria-label={h.name}>
+        <object data={url} type="application/pdf" className="h-[70vh] w-full rounded-xl border border-line" aria-label={h.name}>
           <p className="p-4 text-sm text-muted">Your browser cannot preview PDFs. Use the download button.</p>
         </object>
       ) : null}
