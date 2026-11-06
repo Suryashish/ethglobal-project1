@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "sync-env": "node scripts/sync-env.mjs"
   },
   "dependencies": {
     "@arkiv-network/sdk": "1.0.1",
@@ -29,13 +31,16 @@
     "viem": "2.57.16"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.4",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
+    "postcss": "^8.5.32",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.1.0"
   }
 }

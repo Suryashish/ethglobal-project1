@@ -1,0 +1,34 @@
+"use client";
+import { cn } from "@/lib/cn";
+import { COUNTRIES, flag } from "@/lib/format";
+
+export function CountryPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  return (
+    <fieldset>
+      <legend className="mb-2 text-sm font-medium">Countries allowed to read</legend>
+      <div className="flex max-h-48 flex-wrap gap-2 overflow-y-auto rounded-md border border-line bg-bg p-3">
+        {COUNTRIES.map((c) => {
+          const on = value.includes(c.code);
+          return (
+            <button
+              key={c.code}
+              type="button"
+              aria-pressed={on}
+              title={c.name}
+              onClick={() => onChange(on ? value.filter((x) => x !== c.code) : [...value, c.code])}
+              className={cn(
+                "rounded-md border px-2.5 py-1 text-sm cursor-pointer",
+                on ? "border-sealed bg-sealed/15 text-sealed" : "border-line bg-surface-2 text-muted hover:text-fg",
+              )}
+            >
+              {flag(c.code)} {c.code}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-xs text-muted">
+        Readers prove their nationality with a World ID passport check. Nothing else (no name, no birthdate) is revealed.
+      </p>
+    </fieldset>
+  );
+}
