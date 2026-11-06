@@ -1,0 +1,234 @@
+import { browser } from "wxt/browser";
+import { selectCard, type ReaderCtx } from "../lib/card";
+import { buildCard, CARD_CSS, type DecState } from "../lib/cardView";
+import { decryptFromB64 } from "../lib/decrypt";
+import { expiresAtMs, formatCountdown, nowSec } from "../lib/format";
+import { closestEditable, copyToClipboard, findEditable, insertIntoEditable, toast } from "../lib/insert";
+import { send, type TabMsg } from "../lib/messages";
+import { MARK, scanRoot } from "../lib/scan";
+import type { WireState } from "../lib/wire";
+
+const E2E = import.meta.env.VITE_IIGS_E2E === "1";
+
+type Entry = { state: WireState | null | undefined; dec?: DecState; busy?: boolean; lastKind?: string };
+type Host = { el: Element; ids: string[]; host: HTMLElement; root: ShadowRoot };
+
+export default defineContentScript({
+  matches: [
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://www.reddit.com/*",
+    "https://old.reddit.com/*",
+    ...(E2E ? ["http://localhost:4010/*"] : []),
+  ],
+  main() {
+    const entries = new Map<string, Entry>();
+    const hosts: Host[] = [];
+    let reader: ReaderCtx = null;
+    let lastEditable: HTMLElement | null = null;
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+
+    // ---- composer tracking + insertion ----
+    document.addEventListener(
+      "focusin",
+      (e) => {
+        const ed = closestEditable(e.target);
+        if (ed) lastEditable = ed;
+      },
+      true,
+    );
+    browser.runtime.onMessage.addListener((raw, _sender, sendResponse) => {
+      const m = raw as TabMsg;
+      if (!m || m.type !== "iigs-insert") return false;
+      void (async () => {
+        const ed = findEditable(document, lastEditable);
+        if (ed) {
+          const r = insertIntoEditable(document, ed, m.text);
+          if (r.inserted) return sendResponse(r);
+        }
+        const copied = await copyToClipboard(document, m.text);
+        toast(document, copied ? "Sealed post copied — paste it" : "Could not insert. Copy it from the Silent Seal popup.");
+        sendResponse({ inserted: false, method: copied ? "clipboard" : "none" });
+      })();
+      return true;
+    });
+
+    // ---- reader context ----
+    async function loadContext() {
+      const c = await send({ type: "context" });
+      if (c.ok) {
+        reader = c.reader ? { token: c.reader.token, nationality: c.reader.nationality, expiresAtMs: expiresAtMs(c.reader.expiresAt) } : null;
+      }
+    }
+
+    // ---- rendering ----
+    function modelFor(id: string) {
+      return selectCard(entries.get(id)?.state, nowSec(), reader);
+    }
+
+    function renderHost(h: Host) {
+      h.root.replaceChildren();
+      const style = document.createElement("style");
+      style.textContent = CARD_CSS;
+      h.root.append(style);
+      let any = false;
+      for (const id of h.ids) {
+        const e = entries.get(id);
+        const model = modelFor(id);
+        e && (e.lastKind = model.kind);
+        const card = buildCard(document, id, {
+          model,
+          dec: e?.dec,
+          onVerify: () => void send({ type: "open-verify" }),
+        });
+        if (card) {
+          h.root.append(card);
+          any = true;
+        }
+      }
+      h.host.style.display = any ? "block" : "none";
+    }
+    const renderAll = () => hosts.forEach(renderHost);
+    const renderFor = (id: string) => hosts.filter((h) => h.ids.includes(id)).forEach(renderHost);
+
+    // ---- decrypt orchestration ----
+    async function maybeDecrypt(id: string) {
+      const e = entries.get(id);
+      if (!e || !e.state || e.busy) return;
+      if (e.dec && (e.dec.status === "ok" || e.dec.status === "file" || e.dec.status === "denied" || e.dec.status === "loading")) return;
+      if (e.dec?.status === "error" && e.dec.retryAt > nowSec()) return;
+      const model = modelFor(id);
+      let keyB64: string | undefined;
+      if (model.kind === "open-public") {
+        keyB64 = e.state.release?.releasedKeyB64;
+        if (!keyB64) return fail(id, "Released, but the key is not published yet — retrying…", 10);
+      } else if (model.kind === "open-gated" && model.reader === "verified") {
+        e.busy = true;
+        e.dec = { status: "loading" };
+        renderFor(id);
+        const r = await send({ type: "reader-key", sealId: id });
+        e.busy = false;
+        if (!r.ok) {
+          if (r.code === "not_in_country") {
+            e.dec = { status: "denied" };
+            return renderFor(id);
+          }
+          return fail(id, r.code === "not_released" ? "Released, key service not ready yet — retrying…" : r.error, 10);
+        }
+        keyB64 = r.keyB64;
+      } else return;
+
+      e.busy = true;
+      e.dec = { status: "loading" };
+      renderFor(id);
+      try {
+        const seal = e.state.seal;
+        let cipherB64 = seal.cipherInlineB64 ?? (typeof seal.cipherInline === "string" ? seal.cipherInline : undefined);
+        if (!cipherB64 && seal.swarmRef) {
+          const c = await send({ type: "fetch-cipher", ref: seal.swarmRef });
+          if (!c.ok) throw new Error(c.error);
+          cipherB64 = c.b64;
+        }
+        if (!cipherB64) throw new Error("ciphertext not available");
+        const d = decryptFromB64(id, keyB64, cipherB64, seal.contentHash);
+        e.dec = d.kind === "text" ? { status: "ok", text: d.text } : { status: "file", name: d.name, size: d.size };
+      } catch (err) {
+        e.dec = { status: "error", msg: err instanceof Error ? err.message : String(err), retryAt: nowSec() + 20 };
+      }
+      e.busy = false;
+      renderFor(id);
+    }
+    function fail(id: string, msg: string, retrySec: number) {
+      const e = entries.get(id)!;
+      e.dec = { status: "error", msg, retryAt: nowSec() + retrySec };
+      renderFor(id);
+    }
+
+    // ---- state fetching ----
+    async function fetchStates(ids: string[], force: boolean) {
+      if (!ids.length) return;
+      const r = await send({ type: "states", ids, force });
+      if (!r.ok) return;
+      for (const id of ids) {
+        const prev = entries.get(id) ?? { state: undefined };
+        prev.state = r.states[id] ?? null;
+        entries.set(id, prev);
+      }
+      ids.forEach(renderFor);
+      ids.forEach((id) => void maybeDecrypt(id));
+    }
+
+    // ---- scanning ----
+    function scan() {
+      for (const h of hosts) {
+        // re-insert hosts that the site's re-render dropped
+        if (h.el.isConnected && !h.host.isConnected) h.el.insertAdjacentElement("afterend", h.host);
+      }
+      for (let i = hosts.length - 1; i >= 0; i--) if (!hosts[i]!.el.isConnected) hosts.splice(i, 1);
+      const fresh: string[] = [];
+      for (const f of scanRoot(document)) {
+        f.el.setAttribute(MARK, f.ids.join(","));
+        const host = document.createElement("div");
+        host.setAttribute("data-iigs-card", f.ids.join(","));
+        host.style.display = "none";
+        const root = host.attachShadow({ mode: "open" });
+        f.el.insertAdjacentElement("afterend", host);
+        hosts.push({ el: f.el, ids: f.ids, host, root });
+        for (const id of f.ids) {
+          if (!entries.has(id)) {
+            entries.set(id, { state: undefined });
+            fresh.push(id);
+          } else if (entries.get(id)!.state !== undefined) renderFor(id);
+        }
+      }
+      if (fresh.length) void fetchStates([...new Set(fresh)], false);
+    }
+    const schedule = () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(scan, 300);
+    };
+
+    // ---- timers ----
+    setInterval(() => {
+      const now = nowSec();
+      for (const h of hosts) {
+        h.root.querySelectorAll<HTMLElement>("[data-deadline]").forEach((n) => {
+          const left = Number(n.getAttribute("data-deadline")) - now;
+          const heartbeat = n.getAttribute("data-rule") === "HEARTBEAT";
+          const when = formatCountdown(left);
+          n.textContent = heartbeat ? `🔒 Sealed · opens in ${when} unless the author checks in` : `🔒 Sealed · opens in ${when}`;
+        });
+      }
+      for (const [id, e] of entries) {
+        if (e.lastKind && e.state !== undefined && modelFor(id).kind !== e.lastKind) renderFor(id);
+        void maybeDecrypt(id);
+      }
+    }, 1000);
+    setInterval(() => {
+      const ids = [...entries].filter(([, e]) => e.state && (e.state.status === "ARMED" || e.state.status === "RELEASING")).map(([id]) => id);
+      void fetchStates(ids, true);
+    }, 30_000);
+    // a released-but-not-yet-seen seal is refreshed soon after its deadline passes
+    setInterval(() => {
+      const now = nowSec();
+      const ids = [...entries]
+        .filter(([, e]) => e.state && e.state.status === "ARMED" && e.state.nextDeadline && e.state.nextDeadline <= now)
+        .map(([id]) => id);
+      void fetchStates(ids, true);
+    }, 8_000);
+
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes.reader) return;
+      void loadContext().then(() => {
+        for (const [, e] of entries) if (e.dec && e.dec.status !== "ok") e.dec = undefined;
+        renderAll();
+        for (const id of entries.keys()) void maybeDecrypt(id);
+      });
+    });
+
+    void loadContext().then(() => {
+      scan();
+      new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
+    });
+  },
+});
