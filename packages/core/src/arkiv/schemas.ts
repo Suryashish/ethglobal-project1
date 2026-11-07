@@ -24,7 +24,10 @@ export const SealSchema = defineSchema(SCHEMA_NAMES.seal, {
   intervalSec: u64(),
   audience: str().indexed(),
   countries: str(),
+  /** Short, queryable owner key: see ownerKey() in ./index.ts (the raw id, or "sha256:<hex>" if it exceeds 128 B). */
   ownerNullifier: str().indexed(),
+  /** Full owner id (UTF-8) when it does not fit a str (World session ids are ~136 B). Never indexed. */
+  ownerSession: bytes().optional(),
   contentType: str(),
   swarmRef: str().optional(),
   cipherInline: bytes().optional(),

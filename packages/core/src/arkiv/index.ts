@@ -10,7 +10,8 @@ import { localhost, rabdi } from "@arkiv-network/sdk/chains";
 import { and, eq, or } from "@arkiv-network/sdk/query";
 import { http, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { fromHex, toHex } from "../bytes.js";
+import { fromHex, toHex, utf8 } from "../bytes.js";
+import { sha256Hex } from "../crypto.js";
 import { computeStatus } from "../release.js";
 import type {
   Audience,
@@ -69,6 +70,32 @@ export type ArkivWallet = ReturnType<typeof arkivWalletClient>;
 const n = (v: bigint | number | undefined) => (v === undefined ? 0 : Number(v));
 const hexBytes = (v: Hex | undefined) => (v && v !== "0x" ? fromHex(v) : undefined);
 
+/** Arkiv caps a `str` attribute at 128 UTF-8 bytes. */
+export const ARKIV_MAX_STR_BYTES = 128;
+
+/**
+ * The short, indexed form of an owner id (`ownerNullifier` column). Ids that fit a str are stored as-is (mock ids,
+ * World nullifiers, seals armed before this change); longer ones (World Selfie Check session ids) are stored as
+ * "sha256:<hex>" with the full id in the `ownerSession` bytes column. Deterministic, so lookups by owner still work.
+ */
+export function ownerKey(ownerId: string): string {
+  return utf8(ownerId).length <= ARKIV_MAX_STR_BYTES ? ownerId : "sha256:" + sha256Hex(ownerId);
+}
+
+/** Arkiv seal values for an owner id: the short key, plus the full id as bytes only when it had to be hashed. */
+export function ownerValues(ownerId: string): { ownerNullifier: string; ownerSession?: Uint8Array } {
+  const k = ownerKey(ownerId);
+  return k === ownerId ? { ownerNullifier: k } : { ownerNullifier: k, ownerSession: utf8(ownerId) };
+}
+
+/** Inverse of ownerValues: the full owner id. Rejects a stored long id that does not hash to its key. */
+export function ownerFromRow(key: string, sessionHex: Hex | undefined): string {
+  const b = hexBytes(sessionHex);
+  if (!b) return key;
+  const full = new TextDecoder().decode(b);
+  return ownerKey(full) === key ? full : key;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------------------------
@@ -83,7 +110,7 @@ function toSeal(row: any, withInline: boolean): SealRecord {
     intervalSec: n(row.intervalSec.value),
     audience: row.audience.value as Audience,
     countries: row.countries.value ? String(row.countries.value).split(",").filter(Boolean) : [],
-    ownerNullifier: row.ownerNullifier.value,
+    ownerNullifier: ownerFromRow(row.ownerNullifier.value, row.ownerSession?.value),
     contentType: row.contentType.value as ContentType,
     swarmRef: row.swarmRef?.value ?? "",
     ...(withInline && row.cipherInline?.value ? { cipherInline: hexBytes(row.cipherInline.value) } : {}),
@@ -274,7 +301,7 @@ export async function listSealsByOwner(
       client
         .select()
         .from(SealSchema)
-        .where(and(eq("dep", cfg.dep), eq("ownerNullifier", ownerNullifier)))
+        .where(and(eq("dep", cfg.dep), eq("ownerNullifier", ownerKey(ownerNullifier))))
         .ownedBy(cfg.verifier)
         .limit(100)
         .offset(o)
@@ -331,7 +358,7 @@ export async function writeArmedSeal(
     intervalSec: u64(draft.intervalSec),
     audience: draft.audience,
     countries: draft.countries.join(","),
-    ownerNullifier,
+    ...ownerValues(ownerNullifier),
     contentType: draft.contentType,
     ...(draft.swarmRef ? { swarmRef: draft.swarmRef } : {}),
     ...(draft.cipherInlineB64 ? { cipherInline: fromBase64(draft.cipherInlineB64) } : {}),
