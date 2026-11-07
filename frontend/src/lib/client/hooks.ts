@@ -13,13 +13,13 @@ export function useNowSec(ms = 1000): number {
   return now;
 }
 
-/** A unix timestamp for World signals that is refreshed every 3 minutes (server accepts 10 minutes). */
+/** A unix timestamp for World signals, refreshed every minute (server accepts 10 minutes). */
 export function useIssuedAt(): number {
   const [t, setT] = useState(0);
   useEffect(() => {
     const tick = () => setT(Math.floor(Date.now() / 1000));
     tick();
-    const i = setInterval(tick, 3 * 60 * 1000);
+    const i = setInterval(tick, 60 * 1000); // WorldVerifyButton freezes the signal when a flow starts; this only bounds how stale that start can be
     return () => clearInterval(i);
   }, []);
   return t;

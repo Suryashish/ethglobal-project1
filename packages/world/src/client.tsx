@@ -119,6 +119,10 @@ export function WorldVerifyButton(props: WorldVerifyButtonProps) {
   const [picking, setPicking] = useState(false);
   const [liveNationality, setLiveNationality] = useState<string>("");
   const [liveOpen, setLiveOpen] = useState(false);
+  // The signal is frozen when a live flow starts. Callers refresh `props.signal` on a timer (issuedAt), and the World
+  // request, the server-issued nonce and the envelope we submit must all carry the SAME signal; otherwise a refresh
+  // during the (slow) phone + face check makes the proof commit to a different signal than the one we send.
+  const [liveSignal, setLiveSignal] = useState<string | null>(null);
   const countries = props.countries && props.countries.length ? props.countries : [...MOCK_NATIONALITIES];
 
   function fail(msg: string) {
@@ -159,17 +163,19 @@ export function WorldVerifyButton(props: WorldVerifyButtonProps) {
   async function startLive(nat?: string) {
     setBusy(true);
     setError(null);
+    const signal = props.signal;
     try {
       if (!cfg.appId) throw new Error("World ID is not configured (NEXT_PUBLIC_WORLD_APP_ID is missing).");
       const res = await fetch(props.rpContextUrl ?? "/api/world/rp-context", {
         method: "POST",
         headers: { "content-type": "application/json" },
         // readers declare the nationality up front: the server binds it to this request's nonce
-        body: JSON.stringify({ kind: props.kind, signal: props.signal, ...(props.kind === "reader" && nat ? { nationality: nat } : {}) }),
+        body: JSON.stringify({ kind: props.kind, signal, ...(props.kind === "reader" && nat ? { nationality: nat } : {}) }),
       });
       const body = (await res.json().catch(() => null)) as (RpContext & { message?: string; error?: string }) | null;
       if (!res.ok || !body || !body.nonce) throw new Error(body?.message || body?.error || `Could not start World ID (HTTP ${res.status}).`);
       setRpContext(body);
+      setLiveSignal(signal);
       if (nat) setLiveNationality(nat);
       setLiveOpen(true);
     } catch (e) {
@@ -186,7 +192,7 @@ export function WorldVerifyButton(props: WorldVerifyButtonProps) {
     void startLive();
   }
 
-  const { action, sealId } = parseSignal(props.signal);
+  const { action, sealId } = parseSignal(liveSignal ?? props.signal);
   const sessionId = props.sessionId ?? (action !== "arm" && sealId ? lsGet(SESSION_KEY + sealId) ?? undefined : undefined);
 
   async function onLiveResult(env: WorldProofEnvelope) {
@@ -222,18 +228,18 @@ export function WorldVerifyButton(props: WorldVerifyButtonProps) {
         </Modal>
       ) : null}
 
-      {mounted && live && liveOpen && rpContext && cfg.appId ? (
+      {mounted && live && liveOpen && rpContext && liveSignal && cfg.appId ? (
         <Suspense fallback={null}>
           <LiveWidget
             kind={props.kind}
-            signal={props.signal}
+            signal={liveSignal}
             rpContext={rpContext}
             config={{ appId: cfg.appId, environment: cfg.environment ?? "staging", actionReader: cfg.actionReader ?? "iigs-reader" }}
             sessionId={sessionId}
             nationality={liveNationality}
             onResult={onLiveResult}
             onFail={(m) => fail(m)}
-            onClose={() => { setLiveOpen(false); setRpContext(null); }}
+            onClose={() => { setLiveOpen(false); setRpContext(null); setLiveSignal(null); }}
           />
         </Suspense>
       ) : null}
