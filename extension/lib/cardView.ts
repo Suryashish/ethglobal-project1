@@ -1,11 +1,26 @@
 import { label } from "./countries";
 import { sealedLine, type CardModel } from "./card";
-import { nowSec } from "./format";
+import { formatBytes, nowSec } from "./format";
 
 export type DecState =
   | { status: "loading" }
   | { status: "ok"; text: string }
-  | { status: "file"; name: string; size: number }
+  | {
+      status: "file";
+      name: string;
+      size: number;
+      mime?: string;
+      /** blob: URL of the decrypted image, shown inline (raster images only). */
+      previewUrl?: string;
+      /** The decrypted image itself: drawn onto a canvas when the site's CSP blocks blob: images (e.g. Reddit). */
+      previewBlob?: Blob;
+      /** Set once the <img> was blocked, so later re-renders go straight to the canvas. */
+      useCanvas?: boolean;
+      /** blob: URL of the decrypted bytes, offered as a download. */
+      downloadUrl?: string;
+      /** The public seal page (/s/<id>) on the web app. */
+      pageUrl?: string;
+    }
   | { status: "denied" }
   | { status: "error"; msg: string; retryAt: number };
 
@@ -29,6 +44,10 @@ export const CARD_CSS = `
 button{all:unset;cursor:pointer;background:#1d1b17;color:#fbf8f2;padding:4px 11px;border-radius:7px;font-size:12.5px;font-weight:500}
 button:hover{background:#3b3731}
 button:focus-visible{outline:2px solid #1d1b17;outline-offset:2px}
+.media{display:block;max-width:100%;max-height:520px;width:auto;height:auto;margin-top:9px;border-radius:9px;border:1px solid #e3dacb;background:#fffdf9}
+.links{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:7px;padding-left:31px;font-size:12.5px;color:#5f584e}
+.links a{color:#1d1b17;font-weight:500;text-decoration:underline;text-underline-offset:2px}
+.links a:focus-visible{outline:2px solid #1d1b17;outline-offset:2px;border-radius:3px}
 .brand{display:inline-flex;align-items:center;gap:5px;color:#776e61;font-size:11.5px;margin-left:auto}
 .brand svg{width:12px;height:12px;color:#a8352b}
 `;
@@ -136,6 +155,26 @@ export function buildCard(doc: Document, sealId: string, ui: CardUi): HTMLElemen
   return card;
 }
 
+/** The decrypted picture painted onto a canvas (no URL, no fetch: immune to the site's img-src CSP). */
+function canvasPreview(doc: Document, blob: Blob, name: string): HTMLCanvasElement {
+  const c = doc.createElement("canvas");
+  c.className = "media";
+  c.setAttribute("role", "img");
+  c.setAttribute("aria-label", name);
+  const view = doc.defaultView;
+  if (!view || typeof view.createImageBitmap !== "function") return c;
+  view
+    .createImageBitmap(blob)
+    .then((bmp) => {
+      c.width = bmp.width;
+      c.height = bmp.height;
+      c.getContext("2d")?.drawImage(bmp, 0, 0);
+      bmp.close();
+    })
+    .catch(() => c.remove());
+  return c;
+}
+
 function appendOpened(doc: Document, card: HTMLElement, row: HTMLElement, brand: HTMLElement, dec?: DecState) {
   if (!dec || dec.status === "loading") {
     row.append(icon(doc, "open"), el(doc, "span", "lead", "Opened — decrypting…"), brand);
@@ -143,7 +182,39 @@ function appendOpened(doc: Document, card: HTMLElement, row: HTMLElement, brand:
     row.append(icon(doc, "open"), el(doc, "span", "lead", "Opened by the seal"), brand);
     card.append(el(doc, "div", "plain", dec.text));
   } else if (dec.status === "file") {
-    row.append(icon(doc, "open"), el(doc, "span", "lead", `Opened — file “${dec.name}” (${dec.size} bytes). Open the seal page to download.`), brand);
+    row.append(icon(doc, "open"), el(doc, "span", "lead", "Opened by the seal"), brand);
+    if (dec.useCanvas && dec.previewBlob) {
+      card.append(canvasPreview(doc, dec.previewBlob, dec.name));
+    } else if (dec.previewUrl) {
+      const img = doc.createElement("img");
+      img.className = "media";
+      img.alt = dec.name;
+      img.src = dec.previewUrl;
+      // A site CSP that blocks blob: images (Reddit) fires "error": draw the same bytes onto a canvas instead. Drawing
+      // decoded pixels makes no request, so img-src does not apply. If even that fails, the links below still work.
+      img.addEventListener("error", () => {
+        if (!dec.previewBlob) return img.remove();
+        dec.useCanvas = true;
+        img.replaceWith(canvasPreview(doc, dec.previewBlob, dec.name));
+      });
+      card.append(img);
+    }
+    const links = el(doc, "div", "links");
+    links.append(el(doc, "span", undefined, `${dec.name} · ${formatBytes(dec.size)}`));
+    if (dec.downloadUrl) {
+      const a = el(doc, "a", undefined, "Download") as HTMLAnchorElement;
+      a.href = dec.downloadUrl;
+      a.download = dec.name;
+      links.append(a);
+    }
+    if (dec.pageUrl) {
+      const a = el(doc, "a", undefined, "Open seal page") as HTMLAnchorElement;
+      a.href = dec.pageUrl;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      links.append(a);
+    }
+    card.append(links);
   } else if (dec.status === "error") {
     row.append(icon(doc, "open"), el(doc, "span", "lead", "Opened, but could not decrypt here"), brand);
     card.append(el(doc, "div", "sub", dec.msg));

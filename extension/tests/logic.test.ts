@@ -6,7 +6,7 @@ import { scanRoot } from "../lib/scan";
 import { selectCard, sealedLine } from "../lib/card";
 import { expiresAtMs, formatCountdown } from "../lib/format";
 import { decodeDraft, encodeDraft } from "../lib/draft";
-import { decryptFromB64 } from "../lib/decrypt";
+import { decryptFromB64, isPreviewableImage } from "../lib/decrypt";
 import { buildCard } from "../lib/cardView";
 import { buildDraft, InlineTooLongError } from "../lib/compose";
 import { normalizeConfig, normalizeStates, type WireState } from "../lib/wire";
@@ -89,6 +89,48 @@ describe("card state selection", () => {
     expect(open.querySelector(".plain")!.textContent).toBe("<b>hi</b>");
     expect(open.querySelector("b")).toBeNull();
   });
+  it("renders a released picture inline with download + seal-page links", () => {
+    const card = buildCard(document, ID, {
+      model: { kind: "open-public" },
+      dec: {
+        status: "file", name: "<evidence>.jpg", size: 2_516_582, mime: "image/jpeg",
+        previewUrl: "blob:https://x.com/p", downloadUrl: "blob:https://x.com/d", pageUrl: `http://localhost:3000/s/${ID}`,
+      },
+    })!;
+    const img = card.querySelector("img.media") as HTMLImageElement;
+    expect(img.getAttribute("src")).toBe("blob:https://x.com/p");
+    expect(img.alt).toBe("<evidence>.jpg");
+    const [dl, page] = [...card.querySelectorAll(".links a")] as HTMLAnchorElement[];
+    expect(dl!.getAttribute("href")).toBe("blob:https://x.com/d");
+    expect(dl!.download).toBe("<evidence>.jpg");
+    expect(page!.getAttribute("href")).toBe(`http://localhost:3000/s/${ID}`);
+    expect(page!.rel).toBe("noopener noreferrer");
+    expect(card.textContent).toContain("<evidence>.jpg · 2.4 MB");
+    expect(card.querySelector("evidence")).toBeNull(); // file names are text, never markup
+  });
+  it("falls back to a canvas when the site blocks blob: images (Reddit CSP), and remembers it", () => {
+    const dec = {
+      status: "file" as const, name: "cat.png", size: 12, mime: "image/png",
+      previewUrl: "blob:https://www.reddit.com/p", previewBlob: new Blob([new Uint8Array([1])], { type: "image/png" }),
+    };
+    const card = buildCard(document, ID, { model: { kind: "open-public" }, dec })!;
+    card.querySelector("img")!.dispatchEvent(new Event("error"));
+    expect(card.querySelector("img")).toBeNull();
+    expect(card.querySelector("canvas.media")!.getAttribute("aria-label")).toBe("cat.png");
+    expect(dec).toMatchObject({ useCanvas: true });
+    const again = buildCard(document, ID, { model: { kind: "open-public" }, dec })!; // next re-render: straight to canvas
+    expect(again.querySelector("img")).toBeNull();
+    expect(again.querySelector("canvas.media")).not.toBeNull();
+  });
+  it("a non-image file gets links but no inline preview", () => {
+    const card = buildCard(document, ID, {
+      model: { kind: "open-public" },
+      dec: { status: "file", name: "report.pdf", size: 900, mime: "application/pdf", downloadUrl: "blob:x/d" },
+    })!;
+    expect(card.querySelector("img")).toBeNull();
+    expect(card.textContent).toContain("report.pdf · 900 B");
+    expect(card.querySelectorAll(".links a").length).toBe(1);
+  });
 });
 
 describe("format", () => {
@@ -143,6 +185,22 @@ describe("compose + handoff + decrypt", () => {
     const key = unwrapKey(fromBase64(out.draft.wrappedKeyB64), gated.secretKey, out.draft.sealId);
     expect(decryptFromB64(out.draft.sealId, toBase64(key), out.draft.cipherInlineB64!, out.draft.contentHash)).toEqual({ kind: "text", text: "for India" });
     void fromHex;
+  });
+  it("decrypts a sealed picture back to its exact bytes; only raster images are previewable", () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+    const out = createSeal({
+      source: "vault", content: { type: "file", name: "cat.png", mime: "image/png", bytes: png }, rule: { kind: "TIMER", releaseAt: 2e9 },
+      audience: "PUBLIC", escrowPublicKey: escrow.publicKey, gatedPublicKey: gated.publicKey,
+    });
+    expect(out.needsSwarmUpload).toBe(true); // files always go to Swarm
+    const key = unwrapKey(fromBase64(out.draft.wrappedKeyB64), escrow.secretKey, out.draft.sealId);
+    const d = decryptFromB64(out.draft.sealId, toBase64(key), toBase64(out.ciphertext), out.draft.contentHash);
+    expect(d).toMatchObject({ kind: "file", name: "cat.png", mime: "image/png", size: png.length });
+    expect(d.kind === "file" && [...d.bytes]).toEqual([...png]);
+    expect(isPreviewableImage("image/png")).toBe(true);
+    expect(isPreviewableImage("IMAGE/JPEG")).toBe(true);
+    expect(isPreviewableImage("image/svg+xml")).toBe(false);
+    expect(isPreviewableImage("text/html")).toBe(false);
   });
 });
 

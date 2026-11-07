@@ -156,7 +156,7 @@ describe("explorers (best effort)", () => {
   it("20 etherscan + arkiv explorer", async () => {
     const p = await ctx.newPage(); p.setDefaultTimeout(60_000);
     const key = (await (await fetch(`${APP}/api/seals/${RELEASED_TEXT}`)).json()).seal.entityKey;
-    for (const [url, name] of [[`https://sepolia.etherscan.io/address/0x10dcBC473111666cBd14A4557A9B5AD5b4d7397B`, "20a-sepolia-etherscan-contract"], [`https://rabdi.explorer.arkiv.network/entity/${key}`, "20b-arkiv-explorer-entity"]] as const) {
+    for (const [url, name] of [[`https://sepolia.etherscan.io/address/0x03873A66518628F33180810314793551Cd97646D`, "20a-sepolia-etherscan-contract"], [`https://rabdi.explorer.arkiv.network/entity/${key}`, "20b-arkiv-explorer-entity"]] as const) {
       try {
         await p.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
         await p.waitForTimeout(8000);

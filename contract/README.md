@@ -36,7 +36,12 @@ FORWARDER_ADDRESS=0x15fC6ae953E024d975e77382eEeC56A9101f9F88 \
 forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC_URL --broadcast --private-key $SEPOLIA_DEPLOYER_PRIVATE_KEY
 # optional: WORKFLOW_OWNER=0x… also sets expectedWorkflowOwner
 ```
-Deployer `0x70Ea17eF08A94B9B2Af4d7F8045395E606eE46c1` — Sepolia balance was **0 ETH** when checked (fund it before deploying).
+Deployer `0x70Ea17eF08A94B9B2Af4d7F8045395E606eE46c1` (needs Sepolia ETH).
+
+**Live deployment:** `0x03873A66518628F33180810314793551Cd97646D` (Sepolia block 12079937), deployed with
+`FORWARDER_ADDRESS=0x15fC…9F88` and `TRUSTED_SENDER=0x70Ea…46c1` (the account that signs `cre workflow simulate --broadcast`).
+Checked on-chain: `trustedSender()` = `0x70Ea…46c1`; a report whose tx origin is anyone else reverts with `UntrustedSender`.
+The previous deployment `0x10dc…397B` predates the `trustedSender` check and is no longer used.
 Then put the printed address in `workflows/release-sweeper/workflow/config/config.*.json` (`consumerAddress`) and `SILENT_RELEASE_ADDRESS`.
 
 Verified locally: `Deploy.s.sol` on anvil, then a report produced by `@iigs/core` `encodeReleaseReport` delivered by the

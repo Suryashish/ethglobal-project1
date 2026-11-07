@@ -94,7 +94,7 @@ describe("feed cards against the real app", () => {
     await expect.poll(async () => (await sw.evaluate(() => chrome.storage.local.get("reader"))).reader?.nationality, { timeout: 20_000 }).toBe("IN");
     await shot(v, "6b-verify-reader-page");
     await fix.bringToFront();
-    await waitCard(fix, GATED, /Opened — file “.+” \(\d+ bytes\)/, 60_000);
+    await waitCard(fix, GATED, /Opened by the seal.+ · [\d.]+ (B|KB|MB)Download/, 60_000);
     console.log("gated card after verify (IN):", await card(fix, GATED));
     await shot(fix, "6b-gated-decrypted");
     await v.close();

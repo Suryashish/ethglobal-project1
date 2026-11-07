@@ -1,7 +1,7 @@
 import { browser } from "wxt/browser";
 import { selectCard, type ReaderCtx } from "../lib/card";
 import { buildCard, CARD_CSS, type DecState } from "../lib/cardView";
-import { decryptFromB64 } from "../lib/decrypt";
+import { decryptFromB64, isPreviewableImage } from "../lib/decrypt";
 import { expiresAtMs, formatCountdown, nowSec } from "../lib/format";
 import { closestEditable, copyToClipboard, findEditable, insertIntoEditable, toast } from "../lib/insert";
 import { send, type ScanSummary, type TabMsg } from "../lib/messages";
@@ -39,6 +39,7 @@ export default defineContentScript({
     };
     const hosts: Host[] = [];
     let reader: ReaderCtx = null;
+    let baseUrl = "";
     let lastEditable: HTMLElement | null = null;
     let debounce: ReturnType<typeof setTimeout> | undefined;
 
@@ -75,7 +76,8 @@ export default defineContentScript({
     async function loadContext() {
       const c = await send({ type: "context" });
       if (c.ok) {
-        reader = c.reader ? { nationality: c.reader.nationality, expiresAtMs: expiresAtMs(c.reader.expiresAt) } : null;
+        baseUrl = c.baseUrl.replace(/\/+$/, "");
+        reader =c.reader ? { nationality: c.reader.nationality, expiresAtMs: expiresAtMs(c.reader.expiresAt) } : null;
       }
     }
 
@@ -156,7 +158,23 @@ export default defineContentScript({
         if (!cipherB64) throw new Error("ciphertext not available");
         if (!seal.contentHash) throw new Error("the seal has no content hash; refusing to decrypt unverified data");
         const d = decryptFromB64(id, keyB64, cipherB64, seal.contentHash);
-        e.dec = d.kind === "text" ? { status: "ok", text: d.text } : { status: "file", name: d.name, size: d.size };
+        if (d.kind === "text") {
+          e.dec = { status: "ok", text: d.text };
+        } else {
+          // Bytes stay in this tab (blob: URLs); nothing is uploaded anywhere. Downloads use a neutral type so the
+          // browser saves the file instead of rendering it.
+          const bytes = d.bytes as BlobPart;
+          const image = isPreviewableImage(d.mime) ? new Blob([bytes], { type: d.mime }) : null;
+          e.dec = {
+            status: "file",
+            name: d.name,
+            size: d.size,
+            mime: d.mime,
+            downloadUrl: URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" })),
+            ...(image ? { previewUrl: URL.createObjectURL(image), previewBlob: image } : {}),
+            ...(baseUrl ? { pageUrl: `${baseUrl}/s/${id}` } : {}),
+          };
+        }
       } catch (err) {
         e.dec = { status: "error", msg: err instanceof Error ? err.message : String(err), retryAt: nowSec() + 20 };
       }

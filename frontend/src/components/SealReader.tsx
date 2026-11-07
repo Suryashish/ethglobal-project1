@@ -182,7 +182,7 @@ export function SealReader({ id }: { id: string }) {
 
       {status === "RELEASED" ? <ReleasedView state={state} /> : null}
 
-      {mine && cfg ? <SharePanel seal={seal} baseUrl={cfg.baseUrl} showPost={seal.contentType === "inline" || seal.source === "extension"} /> : null}
+      {mine && cfg ? <SharePanel seal={seal} baseUrl={cfg.baseUrl} /> : null}
 
       {!mine && status === "ARMED" ? (
         <Card className="flex flex-col gap-4 sm:flex-row sm:items-center">

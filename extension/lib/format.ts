@@ -21,6 +21,13 @@ export function formatDuration(secs: number): string {
 
 export const nowSec = () => Math.floor(Date.now() / 1000);
 
+/** "812 B", "48 KB", "2.4 MB". */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 /** Reader token expiry may arrive in seconds or milliseconds. */
 export function expiresAtMs(expiresAt: number): number {
   return expiresAt > 1e12 ? expiresAt : expiresAt * 1000;

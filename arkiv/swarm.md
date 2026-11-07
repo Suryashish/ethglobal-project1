@@ -28,8 +28,9 @@ decrypting.
   (the gateway stamps uploads itself) and `GET /bytes/<ref>` (CORS `*`, so the browser and the extension read directly).
 - Own node: set `SWARM_BEE_URL=http://localhost:1633` and `SWARM_BATCH_ID=<batch>` — the upload route uses bee-js
   (`new Bee(url).data.upload(batchId, bytes)`), no code change.
-- Postage batch ID / buyer wallet: **gateway-provided** in the current build — _if we buy our own batch for the demo, record the batch ID
-  and the wallet here._
+- Postage batch ID: `0000000000000000000000000000000000000000000000000000000000000000` (all zeros). Who provided it: the
+  **public Swarm gateway `api.gateway.ethswarm.org`**, which stamps uploads with its own postage stamps. No wallet of ours bought a
+  batch.
 
 ## Which files upload and read
 - Upload: [`frontend/src/app/api/swarm/upload/route.ts`](../frontend/src/app/api/swarm/upload/route.ts) → [`frontend/src/lib/server/swarm.ts`](../frontend/src/lib/server/swarm.ts) (bee-js), called from the Vault's create flow after in-browser encryption.
@@ -47,7 +48,9 @@ curl -s https://api.gateway.ethswarm.org/bytes/<64 hex>        # → hello swarm
 End to end (seal a file → Swarm → Arkiv → release → fetch from Swarm → decrypt): `frontend/scripts/e2e-release.mts` (seals B and C).
 
 ## Demo timestamp where Swarm is used
-_To be filled in from the final video._
+- **mm:ss** — sealing a file in the Vault: the encrypted file is uploaded to Swarm and the seal's `swarmRef` is written to Arkiv.
+- **mm:ss** — after release, the reader page fetches the ciphertext from Swarm, checks `contentHash` and decrypts the file in the browser
+  (same screen as [`screenshots/11-reader-released-file-swarm.png`](../screenshots/11-reader-released-file-swarm.png)).
 
 ## What got in the way
 - bee-js 13 renamed the upload API (`uploadData` → `bee.data.upload`); older docs still show the old call.
