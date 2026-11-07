@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, StepTitle } from "@/components/ui/Card";
 import { errorMessage } from "@/lib/client/api";
 import { getConfig } from "@/lib/client/config";
+import { uploadCiphertext } from "@/lib/client/swarm";
 import { cn } from "@/lib/cn";
 import { flag, formatBytes, humanInterval } from "@/lib/format";
 
@@ -98,14 +99,7 @@ export function NewSeal() {
       let d = out.draft;
       if (out.needsSwarmUpload) {
         setBusy("Uploading ciphertext to Swarm…");
-        const res = await fetch("/api/swarm/upload", {
-          method: "POST",
-          headers: { "content-type": "application/octet-stream" },
-          body: out.ciphertext as unknown as BodyInit,
-        });
-        const j = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(j.message ?? `Swarm upload failed (${res.status})`);
-        d = { ...d, swarmRef: j.reference as string };
+        d = { ...d, swarmRef: await uploadCiphertext(out.ciphertext, cfg.swarmGateway) };
       }
       setDraft(d);
     } catch (e) {

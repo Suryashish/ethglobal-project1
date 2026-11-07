@@ -20,3 +20,6 @@ contract/lib/
 e2e/state.json
 scripts/testnet.env
 workflows/**/.cre_build_tmp.js
+
+# Vercel env import file (contains secrets)
+vercel.env

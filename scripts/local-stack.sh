@@ -2,7 +2,7 @@
 # Full local stack for development and end-to-end tests — no testnet funds needed.
 #   Arkiv: arkiv-reth dev node in Docker on :8645 (2 s blocks, so Arkiv expirations match wall-clock time)
 #   Chain: anvil on :8545 with SilentRelease (forwarder = anvil #1, used by the dev sweeper in place of CRE)
-#   Web app :3000 (World ID mock mode), worker dev-sweeper + mirror.
+#   Web app :3000 (World ID mode/environment from .secrets/keys.env: live+staging = World simulator), worker dev-sweeper + mirror.
 # Usage: scripts/local-stack.sh up | down | status
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

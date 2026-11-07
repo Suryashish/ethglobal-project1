@@ -1,0 +1,114 @@
+# Runs the IIGS release pipeline on a schedule, so nothing has to stay up on a laptop:
+#   1. sweep  — one `cre workflow simulate --broadcast` of the Chainlink CRE release-sweeper (reads Arkiv,
+#               decides which seals fired, writes the release report to SilentRelease on Sepolia).
+#   2. mirror — one pass of worker/src/mirror.ts (Sepolia Released events -> Arkiv iigs.release).
+# Repo secrets — mirror: MIRROR_PRIVATE_KEY, ARKIV_ACCESS_KEY.
+#   sweep (optional, needs CRE deploy access): CRE_API_KEY, CRE_ETH_PRIVATE_KEY (64 hex, no 0x; must be the
+#   contract's trustedSender), ESCROW_SECRET_KEY. Without CRE_API_KEY the sweep is skipped.
+name: release-sweeper
+
+on:
+  schedule:
+    - cron: "*/5 * * * *" # GitHub's minimum; actual start times can drift by several minutes
+  workflow_dispatch:
+
+concurrency:
+  group: release-sweeper
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  IIGS_DEP: dev
+  CHAIN_ID: "11155111"
+  CHAIN_RPC_URL: https://ethereum-sepolia-rpc.publicnode.com
+  SILENT_RELEASE_ADDRESS: "0x03873A66518628F33180810314793551Cd97646D"
+  VERIFIER_ADDRESS: "0xF87fC983a8D75c67cdF4E0f80b1507a74A21fBD8"
+  MIRROR_ADDRESS: "0x9b95d050D551C8836578f32d92508467E7dA1638"
+  START_BLOCK: "12079937"
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      # CRE_API_KEY needs CRE deploy access. Until it is set, every step below is skipped and the
+      # sweep keeps running locally via `pnpm --filter @iigs/worker cre-runner` (uses `cre login`).
+      CRE_API_KEY: ${{ secrets.CRE_API_KEY }}
+    steps:
+      - name: Skip notice
+        if: env.CRE_API_KEY == ''
+        run: echo "::notice::CRE_API_KEY not set; skipping the CRE sweep (run cre-runner locally)."
+
+      - uses: actions/checkout@v4
+        if: env.CRE_API_KEY != ''
+
+      - uses: oven-sh/setup-bun@v2
+        if: env.CRE_API_KEY != ''
+        with:
+          bun-version: 1.4.4
+
+      - name: Install CRE CLI
+        if: env.CRE_API_KEY != ''
+        run: |
+          curl -sSL https://app.chain.link/install.sh | bash
+          echo "$HOME/.cre/bin" >> "$GITHUB_PATH"
+
+      - name: Install workflow dependencies
+        if: env.CRE_API_KEY != ''
+        working-directory: workflows/release-sweeper/workflow
+        run: bun install --frozen-lockfile
+
+      - name: CRE simulate --broadcast (one cron tick)
+        if: env.CRE_API_KEY != ''
+        working-directory: workflows/release-sweeper
+        env:
+          CRE_ETH_PRIVATE_KEY: ${{ secrets.CRE_ETH_PRIVATE_KEY }}
+          ESCROW_SECRET_KEY_ENV: ${{ secrets.ESCROW_SECRET_KEY }}
+          ARKIV_ACCESS_KEY: ${{ secrets.ARKIV_ACCESS_KEY }}
+        run: |
+          : > "$RUNNER_TEMP/empty.env"
+          cre workflow simulate ./workflow --broadcast --non-interactive --trigger-index 0 \
+            -T staging-settings -e "$RUNNER_TEMP/empty.env"
+
+  mirror:
+    needs: sweep
+    if: always() # mirror whatever is on-chain even if this tick's sweep failed
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      MIRROR_STATE_DIR: ${{ github.workspace }}/.mirror-state
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install worker dependencies
+        run: pnpm install --frozen-lockfile --filter "@iigs/worker..."
+
+      - name: Restore mirror cursor
+        uses: actions/cache/restore@v4
+        with:
+          path: .mirror-state
+          key: mirror-cursor-${{ github.run_id }}
+          restore-keys: mirror-cursor-
+
+      - name: Mirror one pass
+        working-directory: worker
+        env:
+          MIRROR_PRIVATE_KEY: ${{ secrets.MIRROR_PRIVATE_KEY }}
+          ARKIV_ACCESS_KEY: ${{ secrets.ARKIV_ACCESS_KEY }}
+        run: npx tsx src/mirror.ts --once
+
+      - name: Save mirror cursor
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .mirror-state
+          key: mirror-cursor-${{ github.run_id }}-${{ github.run_attempt }}

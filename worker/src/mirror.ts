@@ -89,7 +89,7 @@ export async function main() {
   const L = makeLogger("mirror");
   const cfg = loadMirrorConfig();
   const sink = realArkivSink(cfg, L.error);
-  const path = cursorPath(`${WORKER_DIR}/.state`, cfg.chain.chainId, cfg.chain.releaseAddress);
+  const path = cursorPath(process.env.MIRROR_STATE_DIR || `${WORKER_DIR}/.state`, cfg.chain.chainId, cfg.chain.releaseAddress);
   const deps: MirrorDeps = {
     chain: viemChainReader(cfg.chain.rpcUrl, cfg.chain.releaseAddress),
     arkiv: sink,
@@ -110,6 +110,12 @@ export async function main() {
     L.warn(`could not read MIRROR balance: ${errMsg(e)}`);
   }
   const st = newMirrorState();
+  // One pass then exit, for schedulers (GitHub Actions cron). Throws on failure so the job goes red.
+  if (process.argv.includes("--once") || process.env.MIRROR_ONCE === "1") {
+    const r = await syncOnce(deps, st);
+    L.info(`single pass done at block ${r.head}: ${r.written} written, ${r.skipped} skipped`);
+    return;
+  }
   for (;;) {
     try {
       const r = await syncOnce(deps, st);

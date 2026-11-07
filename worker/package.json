@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "mirror": "tsx src/mirror.ts",
+    "mirror:once": "tsx src/mirror.ts --once",
     "cre-runner": "tsx src/cre-runner.ts",
     "dev-sweeper": "tsx src/dev-sweeper.ts",
     "test": "vitest run",
