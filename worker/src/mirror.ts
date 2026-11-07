@@ -110,10 +110,26 @@ export async function main() {
     L.warn(`could not read MIRROR balance: ${errMsg(e)}`);
   }
   const st = newMirrorState();
-  // One pass then exit, for schedulers (GitHub Actions cron). Throws on failure so the job goes red.
-  if (process.argv.includes("--once") || process.env.MIRROR_ONCE === "1") {
-    const r = await syncOnce(deps, st);
-    L.info(`single pass done at block ${r.head}: ${r.written} written, ${r.skipped} skipped`);
+  // Bounded mode for schedulers (GitHub Actions cron): --once = one pass; MIRROR_RUN_FOR_SEC = keep polling
+  // for that long, then exit. Throws if no pass succeeded so the job goes red.
+  const runForSec = Number(process.env.MIRROR_RUN_FOR_SEC || 0);
+  if (process.argv.includes("--once") || process.env.MIRROR_ONCE === "1" || runForSec > 0) {
+    const until = Date.now() + runForSec * 1000;
+    let ok = 0;
+    let lastErr: unknown;
+    for (;;) {
+      try {
+        const r = await syncOnce(deps, st);
+        ok++;
+        if (r.written || r.skipped || runForSec === 0) L.info(`pass done at block ${r.head}: ${r.written} written, ${r.skipped} skipped`);
+      } catch (e) {
+        lastErr = e;
+        L.error(`sync failed: ${errMsg(e)}`);
+      }
+      if (Date.now() + cfg.pollMs >= until) break;
+      await sleep(cfg.pollMs);
+    }
+    if (!ok) throw lastErr;
     return;
   }
   for (;;) {

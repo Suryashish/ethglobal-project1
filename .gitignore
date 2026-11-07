@@ -23,3 +23,6 @@ workflows/**/.cre_build_tmp.js
 
 # Vercel env import file (contains secrets)
 vercel.env
+
+# secrets handoff file (never commit)
+sample.env

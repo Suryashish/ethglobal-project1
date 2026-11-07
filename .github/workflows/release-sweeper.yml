@@ -76,9 +76,13 @@ jobs:
     needs: sweep
     if: always() # mirror whatever is on-chain even if this tick's sweep failed
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     env:
       MIRROR_STATE_DIR: ${{ github.workspace }}/.mirror-state
+      # Cron can't fire more often than every 5 min, so each run keeps polling for ~4.5 min (every 15 s);
+      # the concurrency group queues the next run behind it, giving ~15-30 s release latency.
+      MIRROR_RUN_FOR_SEC: "270"
+      MIRROR_POLL_MS: "15000"
     steps:
       - uses: actions/checkout@v4
 
@@ -99,12 +103,12 @@ jobs:
           key: mirror-cursor-${{ github.run_id }}
           restore-keys: mirror-cursor-
 
-      - name: Mirror one pass
+      - name: Mirror (polls for MIRROR_RUN_FOR_SEC)
         working-directory: worker
         env:
           MIRROR_PRIVATE_KEY: ${{ secrets.MIRROR_PRIVATE_KEY }}
           ARKIV_ACCESS_KEY: ${{ secrets.ARKIV_ACCESS_KEY }}
-        run: npx tsx src/mirror.ts --once
+        run: npx tsx src/mirror.ts
 
       - name: Save mirror cursor
         if: always()
